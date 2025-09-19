@@ -55,10 +55,11 @@ func Test_Lockout_Updb(t *testing.T) {
 
 	t.Run("identity should not be disabled, when logging in with correct credentials after exceeding maxAttempts", tests.testAuthenticateUpdbNotLockedAfterMaxAttempts)
 	t.Run("identity is disabled, as soon as failed login attempts exceed maxAttempts", tests.testAuthenticateUpdbLockedAfterMaxAttempts)
+	t.Run("Disabled identity must not be allowed to login", tests.testAuthenticateUpdbDisabledIdentityCannotLogin)
 
 }
 
-func Test_Lockout_Reset_Updb(t *testing.T) {
+func Test_Lockout_Reset_On_Success_Updb(t *testing.T) {
 	testContext := NewTestContext(t)
 	defer testContext.Teardown()
 	testContext.StartServer()
@@ -66,6 +67,16 @@ func Test_Lockout_Reset_Updb(t *testing.T) {
 		ctx: testContext,
 	}
 	t.Run("login attempts are reset on successful login", tests.testAuthenticateUpdbAttemptsResetOnSuccess)
+
+}
+
+func Test_Lockout_Reset_After_Lockout_Duration_Updb(t *testing.T) {
+	testContext := NewTestContext(t)
+	defer testContext.Teardown()
+	testContext.StartServer()
+	tests := &authUpdbTests{
+		ctx: testContext,
+	}
 	t.Run("login should succeed after lockout duration has eleapsed", tests.testAuthenticateUpdbUnlockAfterLockoutDuration)
 
 }
@@ -304,7 +315,7 @@ func (tests *authUpdbTests) testAuthenticateUpdbLockedAfterMaxAttempts(t *testin
 	username := tests.ctx.TestUserAuthenticator.Username
 	maxAttempts := int(tests.ctx.TestUserAuthPolicy.Primary.Updb.MaxAttempts)
 
-	for attempt := 1; attempt <= (maxAttempts + 1); attempt++ {
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
 
 		body := gabs.New()
 		_, _ = body.SetP(username, "username")
@@ -319,13 +330,13 @@ func (tests *authUpdbTests) testAuthenticateUpdbLockedAfterMaxAttempts(t *testin
 		testUserIdentity, err := tests.ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
 		r.NoError(err)
 
-		if attempt <= maxAttempts {
+		if attempt < maxAttempts {
 			t.Run("Identity should not be disabled, as long as maxAttempts are not exceeded", func(t *testing.T) {
 				r.Equal(resp.StatusCode(), http.StatusUnauthorized)
 				r.False(testUserIdentity.Disabled)
 			})
 		} else {
-			t.Run("Identity should be disabled, as soon as maxAttempts are exceeded", func(t *testing.T) {
+			t.Run("Identity should be disabled, as soon as last available attempt was not a successful login", func(t *testing.T) {
 				r.Equal(resp.StatusCode(), http.StatusUnauthorized)
 				r.True(testUserIdentity.Disabled)
 			})
@@ -346,6 +357,35 @@ func (tests *authUpdbTests) testAuthenticateUpdbLockedAfterMaxAttempts(t *testin
 
 		}
 	}
+}
+
+func (tests *authUpdbTests) testAuthenticateUpdbDisabledIdentityCannotLogin(t *testing.T) {
+	r := require.New(t)
+	username := tests.ctx.TestUserAuthenticator.Username
+	password := tests.ctx.TestUserAuthenticator.Password
+
+	testUserIdentity, err := tests.ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
+	r.NoError(err)
+	r.True(testUserIdentity.Disabled)
+
+	body := gabs.New()
+	_, _ = body.SetP(username, "username")
+	_, _ = body.SetP(password, "password")
+
+	resp, err := tests.ctx.DefaultClientApiClient().R().
+		SetHeader("content-type", "application/json").
+		SetBody(body.String()).
+		Post("authenticate?method=password")
+	r.NoError(err)
+
+	t.Run("Disabled identities must not be authorized when attempting to login", func(t *testing.T) {
+		r.Equal(resp.StatusCode(), http.StatusUnauthorized)
+	})
+	t.Run("Identity should have disabledAt and disabledUntil field set", func(t *testing.T) {
+
+		r.NotEmpty(testUserIdentity.DisabledAt)
+		r.NotEmpty(testUserIdentity.DisabledUntil)
+	})
 }
 
 func (tests *authUpdbTests) testAuthenticateUpdbAttemptsResetOnSuccess(t *testing.T) {
@@ -404,7 +444,7 @@ func (tests *authUpdbTests) testAuthenticateUpdbUnlockAfterLockoutDuration(t *te
 	lockoutDuration := int(tests.ctx.TestUserAuthPolicy.Primary.Updb.LockoutDurationMinutes)
 	var resp *resty.Response
 
-	for attempt := 1; attempt <= (maxAttempts + 1); attempt++ {
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		body := gabs.New()
 		_, _ = body.SetP(username, "username")
 		_, _ = body.SetP(password, "password")
