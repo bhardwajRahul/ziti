@@ -58,7 +58,7 @@ func Test_Authenticators_AdminUsingAdminEndpoints(t *testing.T) {
 			count, err := authenticatorsBody.ArrayCount("data")
 
 			req.NoError(err)
-			req.Equal(3, count, "expected three authenticators")
+			req.Equal(4, count, "expected four authenticators")
 		})
 
 		t.Run("ott listed authenticator has isIssuedByNetwork=true", func(t *testing.T) {
