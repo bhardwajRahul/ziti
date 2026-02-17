@@ -58,7 +58,7 @@ jobs:
         run: |
           $(go env GOPATH)/bin/ziti-ci configure-git
           $(go env GOPATH)/bin/ziti-ci generate-build-info common/version/info_generated.go version
-          pushd zititest && go install -tags all ./... && popd
+          pushd zititest && go mod tidy && go install -tags all ./... && popd
           go install -tags=all,tests ./...
 
       - name: Create Test Environment
