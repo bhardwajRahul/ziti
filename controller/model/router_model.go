@@ -17,12 +17,13 @@
 package model
 
 import (
+	"math/big"
 	"sync/atomic"
 	"time"
 
-	"github.com/openziti/foundation/v2/genext"
 	"github.com/openziti/foundation/v2/versions"
 	"github.com/openziti/storage/boltz"
+	"github.com/openziti/ziti/v2/common/capabilities"
 	"github.com/openziti/ziti/v2/common/ctrlchan"
 	"github.com/openziti/ziti/v2/common/pb/ctrl_pb"
 	"github.com/openziti/ziti/v2/controller/db"
@@ -49,8 +50,8 @@ type Router struct {
 	Cost        uint16
 	NoTraversal bool
 	Disabled    bool
-	Metadata    *ctrl_pb.RouterMetadata
-	Interfaces  []*Interface
+	Capabilities *big.Int
+	Interfaces   []*Interface
 }
 
 func (entity *Router) GetLinks() []*Link {
@@ -97,18 +98,6 @@ func (entity *Router) SetLinkListeners(listeners []*ctrl_pb.Listener) {
 	entity.Listeners = listeners
 }
 
-func (entity *Router) SetMetadata(metadata *ctrl_pb.RouterMetadata) {
-	entity.Metadata = metadata
-}
-
-func (entity *Router) HasCapability(capability ctrl_pb.RouterCapability) bool {
-	return entity.Metadata != nil && genext.Contains(entity.Metadata.Capabilities, capability)
-}
-
-func (entity *Router) SupportsRouterLinkMgmt() bool {
-	if entity.VersionInfo == nil {
-		return true
-	}
-	supportsLinkMgmt, err := entity.VersionInfo.HasMinimumVersion("0.32.1")
-	return err != nil || supportsLinkMgmt
+func (entity *Router) HasCapability(capability int) bool {
+	return entity.Capabilities != nil && capabilities.IsSet(entity.Capabilities, capability)
 }

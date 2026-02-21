@@ -265,7 +265,7 @@ func (self *networkControllers) connectToController(endpoint string, addr transp
 
 	// Check if controller supports multi-underlay
 	maxHigh := 0
-	if capabilities.IsCapable(underlay, capabilities.ControllerGroupedCtrlChan) {
+	if capabilities.IsCapable(underlay.Headers(), capabilities.ControllerGroupedCtrlChan) {
 		maxHigh = 1
 	}
 
