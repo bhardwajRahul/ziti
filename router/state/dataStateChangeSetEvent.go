@@ -1,8 +1,11 @@
 package state
 
 import (
+	"errors"
+
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
+	"github.com/openziti/ziti/v2/common"
 	"github.com/openziti/ziti/v2/common/pb/edge_ctrl_pb"
 	controllerEnv "github.com/openziti/ziti/v2/controller/env"
 	"google.golang.org/protobuf/proto"
@@ -50,7 +53,13 @@ func (eventHandler *dataStateChangeSetHandler) HandleReceive(msg *channel.Messag
 	err := eventHandler.state.GetRouterDataModelPool().QueueOrError(func() {
 		model := eventHandler.state.RouterDataModel()
 		logger.Debug("received data state change set")
-		model.ApplyChangeSet(newEvent)
+		if applyErr := model.ApplyChangeSet(newEvent); applyErr != nil {
+			var gapErr *common.GapDetectedError
+			if errors.As(applyErr, &gapErr) {
+				logger.WithError(applyErr).Warn("gap detected in data model events, triggering resubscribe")
+				eventHandler.state.ResubscribeRouterDataModel()
+			}
+		}
 	})
 
 	if err != nil {

@@ -124,6 +124,9 @@ func (cache *LoggingEventCache) storeLocked(event *edge_ctrl_pb.DataState_Change
 		return fmt.Errorf("out of order event detected, currentIndex: %d, receivedIndex: %d, type :%T", currentIndex, event.Index, cache)
 	}
 
+	// Set previous index for gap detection on the router side
+	event.PreviousIndex = currentIndex
+
 	targetLogIndex := (cache.HeadLogIndex + 1) % cache.LogSize
 
 	// delete old value if we have looped

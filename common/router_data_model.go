@@ -806,8 +806,8 @@ func (rdm *RouterDataModel) GetTimelineId() string {
 	return rdm.timelineId
 }
 
-// ApplyChangeSet applies the given even to the router data model.
-func (rdm *RouterDataModel) ApplyChangeSet(change *edge_ctrl_pb.DataState_ChangeSet) {
+// ApplyChangeSet applies the given event to the router data model.
+func (rdm *RouterDataModel) ApplyChangeSet(change *edge_ctrl_pb.DataState_ChangeSet) error {
 	logger := pfxlog.Logger().
 		WithField("index", change.Index).
 		WithField("synthetic", change.IsSynthetic).
@@ -833,8 +833,20 @@ func (rdm *RouterDataModel) ApplyChangeSet(change *edge_ctrl_pb.DataState_Change
 		}
 
 		logger.WithError(err).Error("could not apply change set")
-		return
+		return err
 	}
+	return nil
+}
+
+type GapDetectedError struct {
+	CurrentIndex  uint64
+	PreviousIndex uint64
+	ReceivedIndex uint64
+}
+
+func (e *GapDetectedError) Error() string {
+	return fmt.Sprintf("gap detected: router index %d, event previousIndex %d, event index %d",
+		e.CurrentIndex, e.PreviousIndex, e.ReceivedIndex)
 }
 
 func (rdm *RouterDataModel) Store(event *edge_ctrl_pb.DataState_ChangeSet, onSuccess OnStoreSuccess) error {
@@ -850,6 +862,16 @@ func (rdm *RouterDataModel) Store(event *edge_ctrl_pb.DataState_ChangeSet, onSuc
 
 	if rdm.index > 0 && rdm.index >= event.Index {
 		return fmt.Errorf("out of order event detected, currentIndex: %d, receivedIndex: %d, type :%T", rdm.index, event.Index, rdm)
+	}
+
+	// Gap detection via previousIndex chain.
+	// PreviousIndex == 0 means: backwards-compatible controller (didn't set it), or first event ever.
+	if event.PreviousIndex > 0 && rdm.index > 0 && event.PreviousIndex != rdm.index {
+		return &GapDetectedError{
+			CurrentIndex:  rdm.index,
+			PreviousIndex: event.PreviousIndex,
+			ReceivedIndex: event.Index,
+		}
 	}
 
 	rdm.index = event.Index
