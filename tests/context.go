@@ -115,8 +115,7 @@ type TestContext struct {
 	*CustomAssertions
 	ApiHost                string
 	AdminAuthenticator     *updbAuthenticator
-	TestUserAuthenticator  *updbAuthenticator
-	TestUserAuthPolicy     *model.AuthPolicy
+	Managers               *ManagerHelpers
 	AdminManagementSession *session
 	AdminClientSession     *session
 	RestClients            *zitirest.Clients
@@ -135,29 +134,17 @@ type TestContext struct {
 	ControllerConfig    *config.Config
 }
 
-var defaultTestContext = &TestContext{
-	AdminAuthenticator: &updbAuthenticator{
-		Username: eid.New(),
-		Password: eid.New(),
-	},
-	TestUserAuthenticator: &updbAuthenticator{
-		Username: eid.New(),
-		Password: eid.New(),
-	},
-	TestUserAuthPolicy: &model.AuthPolicy{
-		Name: "test-auth-policy",
-		Primary: model.AuthPolicyPrimary{
-			Updb: model.AuthPolicyUpdb{
-				Allowed:                true,
-				MinPasswordLength:      8,
-				RequireSpecialChar:     false,
-				RequireMixedCase:       false,
-				RequireNumberChar:      false,
-				MaxAttempts:            int64(3),
-				LockoutDurationMinutes: int64(1),
-			},
+var defaultTestContext = newDefaultTestContext()
+
+func newDefaultTestContext() *TestContext {
+	ctx := &TestContext{
+		AdminAuthenticator: &updbAuthenticator{
+			Username: eid.New(),
+			Password: eid.New(),
 		},
-	},
+	}
+	ctx.Managers = &ManagerHelpers{ctx: ctx}
+	return ctx
 }
 
 func NewTestContext(t *testing.T) *TestContext {
@@ -167,26 +154,9 @@ func NewTestContext(t *testing.T) *TestContext {
 			Username: eid.New(),
 			Password: eid.New(),
 		},
-		TestUserAuthenticator: &updbAuthenticator{
-			Username: eid.New(),
-			Password: eid.New(),
-		},
-		TestUserAuthPolicy: &model.AuthPolicy{
-			Name: "test-auth-policy",
-			Primary: model.AuthPolicyPrimary{
-				Updb: model.AuthPolicyUpdb{
-					Allowed:                true,
-					MinPasswordLength:      8,
-					RequireSpecialChar:     false,
-					RequireMixedCase:       false,
-					RequireNumberChar:      false,
-					MaxAttempts:            int64(3),
-					LockoutDurationMinutes: int64(1),
-				},
-			},
-		},
 		LogLevel: os.Getenv("ZITI_TEST_LOG_LEVEL"),
 	}
+	ret.Managers = &ManagerHelpers{ctx: ret}
 	ret.testContextChanged(t)
 
 	return ret
@@ -474,39 +444,6 @@ func (ctx *TestContext) StartServerFor(testDb string, clean bool) {
 
 	logrus.Infof("default admin - username: %v", ctx.AdminAuthenticator.Username)
 	logrus.Infof("default admin - password: %v", ctx.AdminAuthenticator.Password)
-
-	authPolicyManager := ctx.EdgeController.AppEnv.Managers.AuthPolicy
-	err = authPolicyManager.Create(ctx.TestUserAuthPolicy, nil)
-	ctx.Req.NoError(err)
-
-	identityManager := ctx.EdgeController.AppEnv.Managers.Identity
-	identity := &model.Identity{
-		Name:           ctx.TestUserAuthenticator.Username,
-		IdentityTypeId: db.DefaultIdentityType,
-		IsAdmin:        false,
-		AuthPolicyId:   ctx.TestUserAuthPolicy.Id,
-	}
-
-	err = identityManager.Create(identity, nil)
-	ctx.Req.NoError(err)
-
-	authenticatorManager := ctx.EdgeController.AppEnv.Managers.Authenticator
-	testUserAuthenticator := &model.Authenticator{
-		BaseEntity: models.BaseEntity{},
-		Method:     db.MethodAuthenticatorUpdb,
-		IdentityId: identity.Id,
-		SubType: &model.AuthenticatorUpdb{
-			Username: ctx.TestUserAuthenticator.Username,
-			Password: ctx.TestUserAuthenticator.Password,
-		},
-	}
-
-	err = authenticatorManager.Create(testUserAuthenticator, nil)
-	ctx.Req.NoError(err)
-
-	logrus.Infof("Created test user: %v with custom auth policy: %v", ctx.TestUserAuthenticator.Username, ctx.TestUserAuthPolicy.Id)
-	logrus.Infof("test user - username: %v", ctx.TestUserAuthenticator.Username)
-	logrus.Infof("test user - password: %v", ctx.TestUserAuthenticator.Password)
 
 	ctx.EdgeController.Run()
 	go func() {

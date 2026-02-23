@@ -153,20 +153,9 @@ func (module *AuthModuleUpdb) Process(context AuthContext) (AuthResult, error) {
 		return nil, apierror.NewInvalidAuth()
 	}
 
-	attempts := int64(0)
-	module.attemptsByAuthenticatorId.Upsert(bundle.Authenticator.Id, 1, func(exist bool, prevAttempts int64, attemptIncrement int64) int64 {
-		if exist {
-			attempts = prevAttempts + attemptIncrement
-		} else {
-			attempts = attemptIncrement
-		}
-
-		return attempts
-	})
-
 	updb := bundle.Authenticator.ToUpdb()
 
-	salt, err := DecodeSalt(updb.Salt)
+	targetSalt, err := DecodeSalt(updb.Salt)
 
 	if err != nil {
 		reason := "could not decode salt"
@@ -178,7 +167,18 @@ func (module *AuthModuleUpdb) Process(context AuthContext) (AuthResult, error) {
 		return nil, apierror.NewInvalidAuth()
 	}
 
-	hr := module.env.GetManagers().Authenticator.ReHashPassword(password, salt)
+	attempts := int64(0)
+	module.attemptsByAuthenticatorId.Upsert(bundle.Authenticator.Id, 1, func(exist bool, prevAttempts int64, attemptIncrement int64) int64 {
+		if exist {
+			attempts = prevAttempts + attemptIncrement
+		} else {
+			attempts = attemptIncrement
+		}
+
+		return attempts
+	})
+
+	hr := module.env.GetManagers().Authenticator.ReHashPassword(password, targetSalt)
 
 	if subtle.ConstantTimeCompare([]byte(updb.Password), []byte(hr.Password)) != 1 {
 		reason := "could not authenticate, password does not match"
@@ -195,11 +195,14 @@ func (module *AuthModuleUpdb) Process(context AuthContext) (AuthResult, error) {
 			logger.WithField("attempts", attempts).WithField("maxAttempts", bundle.AuthPolicy.Primary.Updb.MaxAttempts).Error(reason)
 
 			duration := time.Duration(bundle.AuthPolicy.Primary.Updb.LockoutDurationMinutes) * time.Minute
-			if err = module.env.GetManagers().Identity.Disable(bundle.Authenticator.IdentityId, duration, context.GetChangeContext()); err != nil {
+
+			err = module.env.GetManagers().Identity.Disable(bundle.Authenticator.IdentityId, duration, context.GetChangeContext())
+
+			if err == nil {
+				module.attemptsByAuthenticatorId.Remove(bundle.Authenticator.Id)
+			} else {
 				logger.WithError(err).Error("could not lock identity, unhandled error")
 			}
-
-			module.attemptsByAuthenticatorId.Remove(bundle.Authenticator.Id)
 		}
 
 		return nil, apierror.NewInvalidAuth()

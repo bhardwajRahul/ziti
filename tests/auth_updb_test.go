@@ -19,474 +19,289 @@
 package tests
 
 import (
-	"fmt"
-	"net/http"
 	"testing"
 	"time"
 
-	"github.com/Jeffail/gabs"
-	"github.com/openziti/ziti/v2/controller/env"
-	"github.com/stretchr/testify/require"
+	edge_apis "github.com/openziti/sdk-golang/edge-apis"
+	"github.com/openziti/ziti/v2/controller/model"
 )
 
 func Test_Authenticate_Updb(t *testing.T) {
-	testContext := NewTestContext(t)
-	defer testContext.Teardown()
-	testContext.StartServer()
-	tests := &authUpdbTests{
-		ctx: testContext,
+	ctx := NewTestContext(t)
+	defer ctx.Teardown()
+	ctx.StartServer()
+
+	authPolicy := &model.AuthPolicy{
+		Name: "test-auth-policy",
+		Primary: model.AuthPolicyPrimary{
+			Updb: model.AuthPolicyUpdb{
+				Allowed:                true,
+				MinPasswordLength:      8,
+				MaxAttempts:            int64(3),
+				LockoutDurationMinutes: int64(1),
+			},
+		},
 	}
+	ctx.Req.NoError(ctx.Managers.CreateAuthPolicy(authPolicy))
+	_, testUserAuthenticator, err := ctx.Managers.NewIdentityWithUpdb(authPolicy.Id)
+	ctx.Req.NoError(err)
 
-	t.Run("login with invalid password should fail", tests.testAuthenticateUpdbInvalidPassword)
-	t.Run("login with invalid username should fail", tests.testAuthenticateUpdbInvalidUsername)
-	t.Run("login with missing password should fail", tests.testAuthenticateUPDBMissingPassword)
-	t.Run("login with missing username should fail", tests.testAuthenticateUPDBMissingUsername)
-	t.Run("admin login should pass", tests.testAuthenticateUPDBDefaultAdminSuccess)
-	t.Run("test user login should pass", tests.testAuthenticateUpdbTestUserSuccess)
+	t.Run("login with invalid password should fail", func(t *testing.T) {
+		ctx.testContextChanged(t)
+
+		clientApi := ctx.NewEdgeClientApi(nil)
+		creds := edge_apis.NewUpdbCredentials(ctx.AdminAuthenticator.Username, "invalid_password")
+		apiSession, err := clientApi.Authenticate(creds, nil)
+		ctx.Req.Error(err)
+		ctx.Req.Nil(apiSession)
+	})
+
+	t.Run("login with invalid username should fail", func(t *testing.T) {
+		ctx.testContextChanged(t)
+
+		clientApi := ctx.NewEdgeClientApi(nil)
+		creds := edge_apis.NewUpdbCredentials("weeewoooweeewooo123", "admin")
+		apiSession, err := clientApi.Authenticate(creds, nil)
+		ctx.Req.Error(err)
+		ctx.Req.Nil(apiSession)
+	})
+
+	t.Run("login with missing password should fail", func(t *testing.T) {
+		ctx.testContextChanged(t)
+
+		clientApi := ctx.NewEdgeClientApi(nil)
+		creds := edge_apis.NewUpdbCredentials(ctx.AdminAuthenticator.Username, "")
+		apiSession, err := clientApi.Authenticate(creds, nil)
+		ctx.Req.Error(err)
+		ctx.Req.Nil(apiSession)
+	})
+
+	t.Run("login with missing username should fail", func(t *testing.T) {
+		ctx.testContextChanged(t)
+
+		clientApi := ctx.NewEdgeClientApi(nil)
+		creds := edge_apis.NewUpdbCredentials("", ctx.AdminAuthenticator.Password)
+		apiSession, err := clientApi.Authenticate(creds, nil)
+		ctx.Req.Error(err)
+		ctx.Req.Nil(apiSession)
+	})
+
+	t.Run("admin login should pass", func(t *testing.T) {
+		ctx.testContextChanged(t)
+
+		clientApi := ctx.NewEdgeClientApi(nil)
+		creds := edge_apis.NewUpdbCredentials(ctx.AdminAuthenticator.Username, ctx.AdminAuthenticator.Password)
+		apiSession, err := clientApi.Authenticate(creds, nil)
+		ctx.Req.NoError(err)
+		ctx.Req.NotNil(apiSession)
+		ctx.Req.NotEmpty(apiSession.GetToken())
+		ctx.Req.NotEmpty(apiSession.GetIdentityId())
+	})
+
+	t.Run("test user login should pass", func(t *testing.T) {
+		ctx.testContextChanged(t)
+
+		clientApi := ctx.NewEdgeClientApi(nil)
+		creds := edge_apis.NewUpdbCredentials(testUserAuthenticator.Username, testUserAuthenticator.Password)
+		apiSession, err := clientApi.Authenticate(creds, nil)
+		ctx.Req.NoError(err)
+		ctx.Req.NotNil(apiSession)
+		ctx.Req.NotEmpty(apiSession.GetToken())
+		ctx.Req.NotEmpty(apiSession.GetIdentityId())
+	})
 }
 
-func Test_Lockout_Updb(t *testing.T) {
-	testContext := NewTestContext(t)
-	defer testContext.Teardown()
-	testContext.StartServer()
-	tests := &authUpdbTests{
-		ctx: testContext,
+func Test_Authenticate_Updb_Lockout(t *testing.T) {
+	ctx := NewTestContext(t)
+	defer ctx.Teardown()
+	ctx.StartServer()
+
+	authPolicy := &model.AuthPolicy{
+		Name: "test-auth-policy",
+		Primary: model.AuthPolicyPrimary{
+			Updb: model.AuthPolicyUpdb{
+				Allowed:                true,
+				MinPasswordLength:      8,
+				MaxAttempts:            int64(3),
+				LockoutDurationMinutes: int64(1),
+			},
+		},
 	}
+	ctx.Req.NoError(ctx.Managers.CreateAuthPolicy(authPolicy))
+	_, testUserAuthenticator, err := ctx.Managers.NewIdentityWithUpdb(authPolicy.Id)
+	ctx.Req.NoError(err)
 
-	t.Run("identity should not be disabled, when logging in with correct credentials after exceeding maxAttempts", tests.testAuthenticateUpdbNotLockedAfterMaxAttempts)
-	t.Run("identity is disabled, as soon as failed login attempts exceed maxAttempts", tests.testAuthenticateUpdbLockedAfterMaxAttempts)
-	t.Run("Disabled identity must not be allowed to login", tests.testAuthenticateUpdbDisabledIdentityCannotLogin)
+	t.Run("identity should not be disabled when logging in with correct credentials after exceeding maxAttempts", func(t *testing.T) {
+		ctx.testContextChanged(t)
 
-}
+		username := testUserAuthenticator.Username
+		maxAttempts := int(authPolicy.Primary.Updb.MaxAttempts)
+		clientApi := ctx.NewEdgeClientApi(nil)
 
-func Test_Lockout_Reset_On_Success_Updb(t *testing.T) {
-	testContext := NewTestContext(t)
-	defer testContext.Teardown()
-	testContext.StartServer()
-	tests := &authUpdbTests{
-		ctx: testContext,
-	}
-	t.Run("login attempts are reset on successful login", tests.testAuthenticateUpdbAttemptsResetOnSuccess)
+		for attempt := 1; attempt <= maxAttempts+1; attempt++ {
+			creds := edge_apis.NewUpdbCredentials(username, testUserAuthenticator.Password)
+			apiSession, err := clientApi.Authenticate(creds, nil)
+			ctx.Req.NoError(err)
+			ctx.Req.NotNil(apiSession)
 
-}
-
-func Test_Lockout_Reset_After_Lockout_Duration_Updb(t *testing.T) {
-	testContext := NewTestContext(t)
-	defer testContext.Teardown()
-	testContext.StartServer()
-	tests := &authUpdbTests{
-		ctx: testContext,
-	}
-	t.Run("login should succeed after lockout duration has eleapsed", tests.testAuthenticateUpdbUnlockAfterLockoutDuration)
-
-}
-
-type authUpdbTests struct {
-	ctx *TestContext
-}
-
-func (tests *authUpdbTests) testAuthenticateUpdbInvalidPassword(t *testing.T) {
-	body := gabs.New()
-	_, _ = body.SetP(tests.ctx.AdminAuthenticator.Username, "username")
-	_, _ = body.SetP("invalid_password", "password")
-
-	resp, err := tests.ctx.DefaultClientApiClient().R().
-		SetHeader("content-type", "application/json").
-		SetBody(body.String()).
-		Post("authenticate?method=password")
-
-	t.Run("should not have returned an error", func(t *testing.T) {
-		require.New(t).NoError(err)
+			testUserIdentity, err := ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
+			ctx.Req.NoError(err)
+			ctx.Req.False(testUserIdentity.Disabled)
+		}
 	})
 
-	standardErrorJsonResponseTests(resp, "INVALID_AUTH", http.StatusUnauthorized, t)
-
-	t.Run("does not have a session token", func(t *testing.T) {
-		require.New(t).Equal("", resp.Header().Get("zt-session"), "expected header zt-session to be empty, got %s", resp.Header().Get("zt-session"))
-	})
-}
-
-func (tests *authUpdbTests) testAuthenticateUpdbInvalidUsername(t *testing.T) {
-	body := gabs.New()
-	_, _ = body.SetP("weeewoooweeewooo123", "username")
-	_, _ = body.SetP("admin", "password")
-
-	resp, err := tests.ctx.DefaultClientApiClient().R().
-		SetHeader("content-type", "application/json").
-		SetBody(body.String()).
-		Post("authenticate?method=password")
-
-	t.Run("should not have returned an error", func(t *testing.T) {
-		require.New(t).NoError(err)
-	})
-
-	standardErrorJsonResponseTests(resp, "INVALID_AUTH", http.StatusUnauthorized, t)
-
-	t.Run("does not have a session token", func(t *testing.T) {
-		require.New(t).Equal("", resp.Header().Get("zt-session"), "expected header zt-session to be empty, got %s", resp.Header().Get("zt-session"))
-	})
-}
-
-func (tests *authUpdbTests) testAuthenticateUPDBMissingPassword(t *testing.T) {
-	body := gabs.New()
-	_, _ = body.SetP(tests.ctx.AdminAuthenticator.Username, "username")
-
-	resp, err := tests.ctx.DefaultClientApiClient().R().
-		SetHeader("content-type", "application/json").
-		SetBody(body.String()).
-		Post("authenticate?method=password")
-
-	t.Run("should not have returned an error", func(t *testing.T) {
-		require.New(t).NoError(err)
-	})
-
-	standardErrorJsonResponseTests(resp, "COULD_NOT_VALIDATE", http.StatusBadRequest, t)
-
-	t.Run("does not have a session token", func(t *testing.T) {
-		require.New(t).Equal("", resp.Header().Get("zt-session"), "expected header zt-session to be empty, got %s", resp.Header().Get("zt-session"))
-	})
-}
-
-func (tests *authUpdbTests) testAuthenticateUPDBMissingUsername(t *testing.T) {
-	body := gabs.New()
-	_, _ = body.SetP(tests.ctx.AdminAuthenticator.Password, "password")
-
-	resp, err := tests.ctx.DefaultClientApiClient().R().
-		SetHeader("content-type", "application/json").
-		SetBody(body.String()).
-		Post("authenticate?method=password")
-
-	if err != nil {
-		t.Errorf("failed to authenticate via UPDB as default admin: %s", err)
-	}
-
-	t.Run("should not have returned an error", func(t *testing.T) {
-		require.New(t).NoError(err)
-	})
-
-	standardErrorJsonResponseTests(resp, "COULD_NOT_VALIDATE", http.StatusBadRequest, t)
-
-	t.Run("does not have a session token", func(t *testing.T) {
-		require.New(t).Equal("", resp.Header().Get("zt-session"), "expected header zt-session to be empty, got %s", resp.Header().Get("zt-session"))
-	})
-}
-
-func (tests *authUpdbTests) testAuthenticateUPDBDefaultAdminSuccess(t *testing.T) {
-	body := gabs.New()
-	_, _ = body.SetP(tests.ctx.AdminAuthenticator.Username, "username")
-	_, _ = body.SetP(tests.ctx.AdminAuthenticator.Password, "password")
-
-	resp, err := tests.ctx.DefaultClientApiClient().R().
-		SetHeader("content-type", "application/json").
-		SetBody(body.String()).
-		Post("authenticate?method=password")
-
-	t.Run("should not have returned an error", func(t *testing.T) {
-		require.New(t).NoError(err)
-	})
-
-	standardJsonResponseTests(resp, http.StatusOK, t)
-
-	t.Run("returns a session token HTTP headers", func(t *testing.T) {
-		require.New(t).NotEmpty(resp.Header().Get(env.ZitiSession), fmt.Sprintf("HTTP header %s is empty", env.ZitiSession))
-	})
-
-	t.Run("returns a session token in body", func(t *testing.T) {
-		r := require.New(t)
-		data, err := gabs.ParseJSON(resp.Body())
-
-		r.NoError(err)
-
-		r.True(data.ExistsP("data.token"), "session token property in 'data.token' as not found")
-		r.NotEmpty(data.Path("data.token").String(), "session token property in 'data.token' is empty")
-	})
-
-	t.Run("body session token matches HTTP header token", func(t *testing.T) {
-		r := require.New(t)
-		data, err := gabs.ParseJSON(resp.Body())
-
-		r.NoError(err)
-
-		bodyToken := data.Path("data.token").Data().(string)
-		headerToken := resp.Header().Get(env.ZitiSession)
-		r.Equal(bodyToken, headerToken)
-	})
-
-	t.Run("returns an identity", func(t *testing.T) {
-		r := require.New(t)
-		data, err := gabs.ParseJSON(resp.Body())
-
-		r.NoError(err)
-
-		r.True(data.ExistsP("data.identity"), "session token property in 'data.token' as not found")
-
-		_, err = data.ObjectP("data.identity")
-		r.NoError(err, "session token property in 'data.token' is empty")
-	})
-}
-
-func (tests *authUpdbTests) testAuthenticateUpdbTestUserSuccess(t *testing.T) {
-	body := gabs.New()
-	_, _ = body.SetP(tests.ctx.TestUserAuthenticator.Username, "username")
-	_, _ = body.SetP(tests.ctx.TestUserAuthenticator.Password, "password")
-
-	resp, err := tests.ctx.DefaultClientApiClient().R().
-		SetHeader("content-type", "application/json").
-		SetBody(body.String()).
-		Post("authenticate?method=password")
-
-	t.Run("should not have returned an error", func(t *testing.T) {
-		require.New(t).NoError(err)
-	})
-
-	standardJsonResponseTests(resp, http.StatusOK, t)
-
-	t.Run("returns a session token HTTP headers", func(t *testing.T) {
-		require.New(t).NotEmpty(resp.Header().Get(env.ZitiSession), fmt.Sprintf("HTTP header %s is empty", env.ZitiSession))
-	})
-
-	t.Run("returns a session token in body", func(t *testing.T) {
-		r := require.New(t)
-		data, err := gabs.ParseJSON(resp.Body())
-
-		r.NoError(err)
-
-		r.True(data.ExistsP("data.token"), "session token property in 'data.token' as not found")
-		r.NotEmpty(data.Path("data.token").String(), "session token property in 'data.token' is empty")
-	})
-
-	t.Run("body session token matches HTTP header token", func(t *testing.T) {
-		r := require.New(t)
-		data, err := gabs.ParseJSON(resp.Body())
-
-		r.NoError(err)
-
-		bodyToken := data.Path("data.token").Data().(string)
-		headerToken := resp.Header().Get(env.ZitiSession)
-		r.Equal(bodyToken, headerToken)
-	})
-
-	t.Run("returns an identity", func(t *testing.T) {
-		r := require.New(t)
-		data, err := gabs.ParseJSON(resp.Body())
-
-		r.NoError(err)
-
-		r.True(data.ExistsP("data.identity"), "session token property in 'data.token' as not found")
-
-		_, err = data.ObjectP("data.identity")
-		r.NoError(err, "session token property in 'data.token' is empty")
-	})
-}
-
-func (tests *authUpdbTests) testAuthenticateUpdbNotLockedAfterMaxAttempts(t *testing.T) {
-	r := require.New(t)
-
-	username := tests.ctx.TestUserAuthenticator.Username
-	password := tests.ctx.TestUserAuthenticator.Password
-	maxAttempts := int(tests.ctx.TestUserAuthPolicy.Primary.Updb.MaxAttempts)
-
-	for attempt := 1; attempt <= (maxAttempts + 1); attempt++ {
-
-		body := gabs.New()
-		_, _ = body.SetP(username, "username")
-		_, _ = body.SetP(password, "password")
-
-		resp, err := tests.ctx.DefaultClientApiClient().R().
-			SetHeader("content-type", "application/json").
-			SetBody(body.String()).
-			Post("authenticate?method=password")
-		r.NoError(err)
-
-		testUserIdentity, err := tests.ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
-		r.NoError(err)
-
-		t.Run("Identity must not be disabled, when logging with correct credentials after exceeding maxAttempts", func(t *testing.T) {
-			r.Equal(resp.StatusCode(), http.StatusOK)
-			r.False(testUserIdentity.Disabled)
-		})
-
-	}
-}
-
-func (tests *authUpdbTests) testAuthenticateUpdbLockedAfterMaxAttempts(t *testing.T) {
-	r := require.New(t)
-
-	username := tests.ctx.TestUserAuthenticator.Username
-	maxAttempts := int(tests.ctx.TestUserAuthPolicy.Primary.Updb.MaxAttempts)
-
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-
-		body := gabs.New()
-		_, _ = body.SetP(username, "username")
-		_, _ = body.SetP("wrong_password", "password")
-
-		resp, err := tests.ctx.DefaultClientApiClient().R().
-			SetHeader("content-type", "application/json").
-			SetBody(body.String()).
-			Post("authenticate?method=password")
-		r.NoError(err)
-
-		testUserIdentity, err := tests.ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
-		r.NoError(err)
-
-		if attempt < maxAttempts {
-			t.Run("Identity should not be disabled, as long as maxAttempts are not exceeded", func(t *testing.T) {
-				r.Equal(resp.StatusCode(), http.StatusUnauthorized)
-				r.False(testUserIdentity.Disabled)
-			})
-		} else {
-			t.Run("Identity should be disabled, as soon as last available attempt was not a successful login", func(t *testing.T) {
-				r.Equal(resp.StatusCode(), http.StatusUnauthorized)
-				r.True(testUserIdentity.Disabled)
-			})
-			t.Run("Identity should have disabledAt and disabledUntil field set", func(t *testing.T) {
-
-				r.NotEmpty(testUserIdentity.DisabledAt)
-				r.NotEmpty(testUserIdentity.DisabledUntil)
-			})
-
-			t.Run("Identity should disabledUntil field set, according to configured lockoutDuration", func(t *testing.T) {
+	t.Run("identity is disabled as soon as failed login attempts exceed maxAttempts", func(t *testing.T) {
+		ctx.testContextChanged(t)
+
+		username := testUserAuthenticator.Username
+		maxAttempts := int(authPolicy.Primary.Updb.MaxAttempts)
+		clientApi := ctx.NewEdgeClientApi(nil)
+
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			creds := edge_apis.NewUpdbCredentials(username, "wrong_password")
+			_, err := clientApi.Authenticate(creds, nil)
+			ctx.Req.Error(err)
+
+			testUserIdentity, err := ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
+			ctx.Req.NoError(err)
+
+			if attempt < maxAttempts {
+				ctx.Req.False(testUserIdentity.Disabled)
+			} else {
+				ctx.Req.True(testUserIdentity.Disabled)
+				ctx.Req.NotEmpty(testUserIdentity.DisabledAt)
+				ctx.Req.NotEmpty(testUserIdentity.DisabledUntil)
 
 				lockDuration := testUserIdentity.DisabledUntil.Sub(*testUserIdentity.DisabledAt)
-				expectedDuration := int(tests.ctx.TestUserAuthPolicy.Primary.Updb.LockoutDurationMinutes)
-				actualDuration := int(lockDuration.Minutes())
-				r.Equal(expectedDuration, actualDuration, "lockout duration does not match configured value")
-
-			})
-
-		}
-	}
-}
-
-func (tests *authUpdbTests) testAuthenticateUpdbDisabledIdentityCannotLogin(t *testing.T) {
-	r := require.New(t)
-	username := tests.ctx.TestUserAuthenticator.Username
-	password := tests.ctx.TestUserAuthenticator.Password
-
-	testUserIdentity, err := tests.ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
-	r.NoError(err)
-	r.True(testUserIdentity.Disabled)
-
-	body := gabs.New()
-	_, _ = body.SetP(username, "username")
-	_, _ = body.SetP(password, "password")
-
-	resp, err := tests.ctx.DefaultClientApiClient().R().
-		SetHeader("content-type", "application/json").
-		SetBody(body.String()).
-		Post("authenticate?method=password")
-	r.NoError(err)
-
-	t.Run("Disabled identities must not be authorized when attempting to login", func(t *testing.T) {
-		r.Equal(resp.StatusCode(), http.StatusUnauthorized)
-	})
-	t.Run("Identity should have disabledAt and disabledUntil field set", func(t *testing.T) {
-
-		r.NotEmpty(testUserIdentity.DisabledAt)
-		r.NotEmpty(testUserIdentity.DisabledUntil)
-	})
-}
-
-func (tests *authUpdbTests) testAuthenticateUpdbAttemptsResetOnSuccess(t *testing.T) {
-	r := require.New(t)
-
-	username := tests.ctx.TestUserAuthenticator.Username
-	password := "wrong_password"
-	maxAttempts := int(tests.ctx.TestUserAuthPolicy.Primary.Updb.MaxAttempts)
-
-	for attempt := 1; attempt <= (maxAttempts + 1); attempt++ {
-
-		body := gabs.New()
-		_, _ = body.SetP(username, "username")
-		_, _ = body.SetP(password, "password")
-
-		resp, err := tests.ctx.DefaultClientApiClient().R().
-			SetHeader("content-type", "application/json").
-			SetBody(body.String()).
-			Post("authenticate?method=password")
-		r.NoError(err)
-
-		testUserIdentity, err := tests.ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
-		r.NoError(err)
-
-		// Switch to correct password on the third attempt to reset attempts, then back to wrong password
-		switch attempt {
-		case 1, 2:
-			t.Run("Identity must not be disabled until maxAttempts exceeded", func(t *testing.T) {
-				r.Equal(resp.StatusCode(), http.StatusUnauthorized)
-				r.False(testUserIdentity.Disabled)
-			})
-			if attempt == 2 {
-				password = tests.ctx.TestUserAuthenticator.Password
+				expectedDuration := int(authPolicy.Primary.Updb.LockoutDurationMinutes)
+				ctx.Req.Equal(expectedDuration, int(lockDuration.Minutes()))
 			}
-		case 3:
-			t.Run("Identity must not be disabled and login should be successful on the last allowed attempt", func(t *testing.T) {
-				r.Equal(resp.StatusCode(), http.StatusOK)
-				r.False(testUserIdentity.Disabled)
-			})
-			password = "wrong_password"
-		default:
-			t.Run("Identity must not be disabled, as attempts should have been reset on last successful login", func(t *testing.T) {
-				r.Equal(resp.StatusCode(), http.StatusUnauthorized)
-				r.False(testUserIdentity.Disabled)
-			})
 		}
-	}
+	})
+
+	t.Run("disabled identity must not be allowed to login", func(t *testing.T) {
+		ctx.testContextChanged(t)
+
+		username := testUserAuthenticator.Username
+
+		testUserIdentity, err := ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
+		ctx.Req.NoError(err)
+		ctx.Req.True(testUserIdentity.Disabled)
+		ctx.Req.NotEmpty(testUserIdentity.DisabledAt)
+		ctx.Req.NotEmpty(testUserIdentity.DisabledUntil)
+
+		clientApi := ctx.NewEdgeClientApi(nil)
+		creds := edge_apis.NewUpdbCredentials(username, testUserAuthenticator.Password)
+		apiSession, err := clientApi.Authenticate(creds, nil)
+		ctx.Req.Error(err)
+		ctx.Req.Nil(apiSession)
+	})
 }
 
-func (tests *authUpdbTests) testAuthenticateUpdbUnlockAfterLockoutDuration(t *testing.T) {
-	r := require.New(t)
+func Test_Authenticate_Updb_Lockout_Reset(t *testing.T) {
+	ctx := NewTestContext(t)
+	defer ctx.Teardown()
+	ctx.StartServer()
 
-	username := tests.ctx.TestUserAuthenticator.Username
-	password := "wrong_password"
-	maxAttempts := int(tests.ctx.TestUserAuthPolicy.Primary.Updb.MaxAttempts)
-	lockoutDuration := int(tests.ctx.TestUserAuthPolicy.Primary.Updb.LockoutDurationMinutes)
-	var resp *resty.Response
-
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		body := gabs.New()
-		_, _ = body.SetP(username, "username")
-		_, _ = body.SetP(password, "password")
-
-		var err error
-		resp, err = tests.ctx.DefaultClientApiClient().R().
-			SetHeader("content-type", "application/json").
-			SetBody(body.String()).
-			Post("authenticate?method=password")
-		r.NoError(err)
+	authPolicy := &model.AuthPolicy{
+		Name: "test-auth-policy",
+		Primary: model.AuthPolicyPrimary{
+			Updb: model.AuthPolicyUpdb{
+				Allowed:                true,
+				MinPasswordLength:      8,
+				MaxAttempts:            int64(3),
+				LockoutDurationMinutes: int64(1),
+			},
+		},
 	}
+	ctx.Req.NoError(ctx.Managers.CreateAuthPolicy(authPolicy))
+	_, testUserAuthenticator, err := ctx.Managers.NewIdentityWithUpdb(authPolicy.Id)
+	ctx.Req.NoError(err)
 
-	testUserIdentity, err := tests.ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
-	r.NoError(err)
+	t.Run("login attempts are reset on successful login", func(t *testing.T) {
+		ctx.testContextChanged(t)
 
-	t.Run("Identity should be disabled", func(t *testing.T) {
-		r.Equal(resp.StatusCode(), http.StatusUnauthorized)
-		r.True(testUserIdentity.Disabled)
+		username := testUserAuthenticator.Username
+		maxAttempts := int(authPolicy.Primary.Updb.MaxAttempts)
+		clientApi := ctx.NewEdgeClientApi(nil)
+		password := "wrong_password"
+
+		for attempt := 1; attempt <= maxAttempts+1; attempt++ {
+			creds := edge_apis.NewUpdbCredentials(username, password)
+			apiSession, err := clientApi.Authenticate(creds, nil)
+
+			testUserIdentity, identityErr := ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
+			ctx.Req.NoError(identityErr)
+
+			switch attempt {
+			case 1, 2:
+				ctx.Req.Error(err)
+				ctx.Req.Nil(apiSession)
+				ctx.Req.False(testUserIdentity.Disabled)
+				if attempt == 2 {
+					password = testUserAuthenticator.Password
+				}
+			case 3:
+				ctx.Req.NoError(err)
+				ctx.Req.NotNil(apiSession)
+				ctx.Req.False(testUserIdentity.Disabled)
+				password = "wrong_password"
+			default:
+				ctx.Req.Error(err)
+				ctx.Req.Nil(apiSession)
+				ctx.Req.False(testUserIdentity.Disabled)
+			}
+		}
 	})
+}
 
-	// Simulate waiting for lockout duration to expire
-	time.Sleep((time.Duration(lockoutDuration) * time.Minute) + (5 * time.Second))
+func Test_Authenticate_Updb_Lockout_Duration(t *testing.T) {
+	ctx := NewTestContext(t)
+	defer ctx.Teardown()
+	ctx.StartServer()
 
-	testUserIdentity, err = tests.ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
-	r.NoError(err)
+	authPolicy := &model.AuthPolicy{
+		Name: "test-auth-policy",
+		Primary: model.AuthPolicyPrimary{
+			Updb: model.AuthPolicyUpdb{
+				Allowed:                true,
+				MinPasswordLength:      8,
+				MaxAttempts:            int64(3),
+				LockoutDurationMinutes: int64(1),
+			},
+		},
+	}
+	ctx.Req.NoError(ctx.Managers.CreateAuthPolicy(authPolicy))
+	_, testUserAuthenticator, err := ctx.Managers.NewIdentityWithUpdb(authPolicy.Id)
+	ctx.Req.NoError(err)
 
-	t.Run("Identity should be enabled again", func(t *testing.T) {
-		r.False(testUserIdentity.Disabled)
-	})
+	t.Run("login should succeed after lockout duration has elapsed", func(t *testing.T) {
+		ctx.testContextChanged(t)
 
-	// Try to login with correct credentials after lockout duration
-	body := gabs.New()
-	_, _ = body.SetP(username, "username")
-	_, _ = body.SetP(tests.ctx.TestUserAuthenticator.Password, "password")
+		username := testUserAuthenticator.Username
+		maxAttempts := int(authPolicy.Primary.Updb.MaxAttempts)
+		lockoutDuration := int(authPolicy.Primary.Updb.LockoutDurationMinutes)
+		clientApi := ctx.NewEdgeClientApi(nil)
 
-	resp, err = tests.ctx.DefaultClientApiClient().R().
-		SetHeader("content-type", "application/json").
-		SetBody(body.String()).
-		Post("authenticate?method=password")
-	r.NoError(err)
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			creds := edge_apis.NewUpdbCredentials(username, "wrong_password")
+			_, err := clientApi.Authenticate(creds, nil)
+			ctx.Req.Error(err)
+		}
 
-	t.Run("UPDB login should succeed", func(t *testing.T) {
-		r.Equal(resp.StatusCode(), http.StatusOK)
+		testUserIdentity, err := ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
+		ctx.Req.NoError(err)
+		ctx.Req.True(testUserIdentity.Disabled)
+
+		time.Sleep(time.Duration(lockoutDuration)*time.Minute + 5*time.Second)
+
+		testUserIdentity, err = ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
+		ctx.Req.NoError(err)
+		ctx.Req.False(testUserIdentity.Disabled)
+
+		creds := edge_apis.NewUpdbCredentials(username, testUserAuthenticator.Password)
+		apiSession, err := clientApi.Authenticate(creds, nil)
+		ctx.Req.NoError(err)
+		ctx.Req.NotNil(apiSession)
 	})
 }
