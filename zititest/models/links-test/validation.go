@@ -205,6 +205,11 @@ func validateRouterLinks(id string, clients *zitirest.Clients) (int, error) {
 			for _, linkDetail := range routerDetail.LinkDetails {
 				if !linkDetail.IsValid {
 					invalid++
+					logger.Infof("INVALID link %v on router %v (%v): ctrlState=%v routerState=%v destRouter=%v destConnected=%v dialed=%v messages=%v",
+						linkDetail.LinkId, routerDetail.RouterId, routerDetail.RouterName,
+						linkDetail.CtrlState, linkDetail.RouterState,
+						linkDetail.DestRouterId, linkDetail.DestConnected,
+						linkDetail.Dialed, linkDetail.Messages)
 				}
 			}
 			expected--
