@@ -232,7 +232,7 @@ func logLinkDiagnostics(logger *logrus.Entry, clients *zitirest.Clients, linkCou
 	result, err := clients.Fabric.Link.ListLinks(&link.ListLinksParams{
 		Filter:  &filter,
 		Context: ctx,
-	})
+	}, nil)
 	if err != nil {
 		logger.WithError(err).Error("failed to fetch links for diagnostics")
 		return

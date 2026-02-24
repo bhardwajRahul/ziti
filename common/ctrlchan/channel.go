@@ -95,7 +95,7 @@ type BaseCtrlChannel struct {
 	lowPriorityMsgChan  chan channel.Sendable
 
 	hasHighPriorityChan atomic.Bool
-	underlayCount  atomic.Uint32
+	underlayCount       atomic.Uint32
 }
 
 func (self *BaseCtrlChannel) ChannelCreated(ch channel.MultiChannel) {
@@ -195,6 +195,9 @@ func (self *BaseCtrlChannel) GetMessageSource(underlay channel.Underlay) channel
 }
 
 func (self *BaseCtrlChannel) HandleTxFailed(_ channel.Underlay, _ channel.Sendable) bool {
+	// control channel senders know how to handle send failures. If we retry under the hood,
+	// we introduce the possibility of unexpected ordering changes. Some subsystems, like
+	// link management depend on in order delivery of messages
 	return false
 }
 

@@ -44,3 +44,10 @@ const (
 	// session tokens as JWTs, carrying identity and service information
 	ControllerSupportsJWTLegacySessions int = 6
 )
+
+// Router Capabilities
+const (
+	// RouterMultiChannel indicates the router uses new (1000+) ControlHeaders IDs
+	// and supports multi-underlay control channels
+	RouterMultiChannel int = 1
+)
