@@ -204,12 +204,6 @@ func (self *RouterMessaging) syncStates() {
 			continue
 		}
 
-		if !notifyRouter.SupportsRouterLinkMgmt() {
-			// if the router doesn't support router based link mgmt, don't send these messages
-			delete(self.routerUpdates, k)
-			continue
-		}
-
 		for routerId := range updates.changedRouters {
 			router := self.managers.Router.GetConnected(routerId)
 			if router != nil {

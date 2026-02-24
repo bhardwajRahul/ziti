@@ -32,10 +32,10 @@ const (
 	// still advertised for pre-2.0 routers
 	ControllerCreateCircuitV2 int = 3
 
-	// RouterDataModel deprecated, assumed to be supported
+	// ControllerRouterDataModel deprecated, assumed to be supported
 	// indicates support for the CreateCircuitV2 method
 	// still advertised for pre-2.0 routers
-	RouterDataModel int = 4
+	ControllerRouterDataModel int = 4
 
 	// ControllerGroupedCtrlChan indicates support for grouped-underlay control channels
 	ControllerGroupedCtrlChan int = 5
@@ -43,4 +43,11 @@ const (
 	// ControllerSupportsJWTLegacySessions indicates that the controller generates legacy
 	// session tokens as JWTs, carrying identity and service information
 	ControllerSupportsJWTLegacySessions int = 6
+)
+
+// Router Capabilities
+const (
+	// RouterMultiChannel indicates the router uses new (1000+) ControlHeaders IDs
+	// and supports multi-underlay control channels
+	RouterMultiChannel int = 1
 )

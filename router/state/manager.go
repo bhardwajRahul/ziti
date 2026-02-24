@@ -201,10 +201,15 @@ type Manager interface {
 	// router data model events and updates.
 	GetRouterDataModelPool() goroutines.Pool
 
-	// ResyncRouterDataModel will initiate a fully resync of the router data model from
+	// ResyncRouterDataModel will initiate a full resync of the router data model from
 	// a controller. Used when there's an indication that the router data model has gotten
 	// out of sync
 	ResyncRouterDataModel()
+
+	// ResubscribeRouterDataModel will resubscribe to router data model updates using
+	// the current index, allowing the controller to replay from its event cache rather
+	// than requiring a full resync
+	ResubscribeRouterDataModel()
 
 	// StartHeartbeat initiates periodic transmission of active legacy session tokens
 	// to controllers, enabling distributed session state synchronization.
@@ -964,6 +969,16 @@ func (self *ManagerImpl) ResyncRouterDataModel() {
 	self.dataModelSubscription.Store(DataModelSubscription{})
 
 	// notify subscription manager code to resubscribe with updated model and index
+	select {
+	case self.modelChanged <- struct{}{}:
+	default:
+	}
+}
+
+func (self *ManagerImpl) ResubscribeRouterDataModel() {
+	self.dataModelSubscription.Store(DataModelSubscription{})
+
+	// notify subscription manager code to resubscribe with current index
 	select {
 	case self.modelChanged <- struct{}{}:
 	default:

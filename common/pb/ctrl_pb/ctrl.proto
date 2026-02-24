@@ -55,9 +55,9 @@ enum ContentType {
 
 enum ControlHeaders {
   NoneHeader = 0;
-  ListenersHeader = 10;
-  RouterMetadataHeader = 11;
-  CapabilitiesHeader = 12;
+  ListenersHeader = 1000;
+  RouterMetadataHeader = 1001;
+  CapabilitiesHeader = 1002;
 }
 
 enum RouterCapability {

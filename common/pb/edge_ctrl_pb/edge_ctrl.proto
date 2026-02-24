@@ -222,6 +222,7 @@ message DataState {
     bool isSynthetic = 2;
     repeated Event changes = 3;
     string timestampId = 4;
+    uint64 previousIndex = 5;
   }
 
   message Event {

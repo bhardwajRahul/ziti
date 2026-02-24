@@ -94,8 +94,8 @@ type BaseCtrlChannel struct {
 	defaultMsgChan      chan channel.Sendable
 	lowPriorityMsgChan  chan channel.Sendable
 
-	hasDefaultChan atomic.Bool
-	underlayCount  atomic.Uint32
+	hasHighPriorityChan atomic.Bool
+	underlayCount       atomic.Uint32
 }
 
 func (self *BaseCtrlChannel) ChannelCreated(ch channel.MultiChannel) {
@@ -135,24 +135,11 @@ func (self *BaseCtrlChannel) GetLowPrioritySender() channel.Sender {
 }
 
 func (self *BaseCtrlChannel) GetNextMsgDefault(notifier *channel.CloseNotifier) (channel.Sendable, error) {
-	select {
-	case msg := <-self.defaultMsgChan:
-		return msg, nil
-	case msg := <-self.highPriorityMsgChan:
-		return msg, nil
-	case msg := <-self.lowPriorityMsgChan:
-		return msg, nil
-	case <-self.GetCloseNotify():
-		return nil, io.EOF
-	case <-notifier.GetCloseNotify():
-		return nil, io.EOF
-	}
-}
-
-func (self *BaseCtrlChannel) GetHighPriorityMsg(notifier *channel.CloseNotifier) (channel.Sendable, error) {
-	if self.hasDefaultChan.Load() {
+	if self.hasHighPriorityChan.Load() {
 		select {
-		case msg := <-self.highPriorityMsgChan:
+		case msg := <-self.defaultMsgChan:
+			return msg, nil
+		case msg := <-self.lowPriorityMsgChan:
 			return msg, nil
 		case <-self.GetCloseNotify():
 			return nil, io.EOF
@@ -161,15 +148,28 @@ func (self *BaseCtrlChannel) GetHighPriorityMsg(notifier *channel.CloseNotifier)
 		}
 	} else {
 		select {
+		case msg := <-self.defaultMsgChan:
+			return msg, nil
 		case msg := <-self.highPriorityMsgChan:
 			return msg, nil
-		case msg := <-self.defaultMsgChan:
+		case msg := <-self.lowPriorityMsgChan:
 			return msg, nil
 		case <-self.GetCloseNotify():
 			return nil, io.EOF
 		case <-notifier.GetCloseNotify():
 			return nil, io.EOF
 		}
+	}
+}
+
+func (self *BaseCtrlChannel) GetHighPriorityMsg(notifier *channel.CloseNotifier) (channel.Sendable, error) {
+	select {
+	case msg := <-self.highPriorityMsgChan:
+		return msg, nil
+	case <-self.GetCloseNotify():
+		return nil, io.EOF
+	case <-notifier.GetCloseNotify():
+		return nil, io.EOF
 	}
 }
 
@@ -194,13 +194,11 @@ func (self *BaseCtrlChannel) GetMessageSource(underlay channel.Underlay) channel
 	return self.GetNextMsgDefault
 }
 
-func (self *BaseCtrlChannel) HandleTxFailed(_ channel.Underlay, sendable channel.Sendable) bool {
-	select {
-	case self.defaultMsgChan <- sendable:
-		return true
-	default:
-		return false
-	}
+func (self *BaseCtrlChannel) HandleTxFailed(_ channel.Underlay, _ channel.Sendable) bool {
+	// control channel senders know how to handle send failures. If we retry under the hood,
+	// we introduce the possibility of unexpected ordering changes. Some subsystems, like
+	// link management depend on in order delivery of messages
+	return false
 }
 
 // DialCtrlChannelConfig configures the dialing side of a control channel (router side).
@@ -301,8 +299,8 @@ func (self *DialCtrlChannel) HandleUnderlayClose(ch channel.MultiChannel, underl
 	// Track if all underlays are gone so we know to treat next connection as first
 	totalUnderlays := uint32(0)
 	underlayCounts := ch.GetUnderlayCountsByType()
-	if underlayCounts[ChannelTypeDefault] == 0 {
-		self.hasDefaultChan.Store(false)
+	if underlayCounts[ChannelTypeHighPriority] == 0 {
+		self.hasHighPriorityChan.Store(false)
 	}
 
 	for _, count := range underlayCounts {
@@ -317,8 +315,8 @@ func (self *DialCtrlChannel) HandleUnderlayClose(ch channel.MultiChannel, underl
 }
 
 func (self *DialCtrlChannel) HandleUnderlayAccepted(ch channel.MultiChannel, underlay channel.Underlay) {
-	if underlayType := channel.GetUnderlayType(underlay); underlayType == ChannelTypeDefault {
-		self.hasDefaultChan.Store(true)
+	if channel.GetUnderlayType(underlay) == ChannelTypeHighPriority {
+		self.hasHighPriorityChan.Store(true)
 	}
 
 	totalUnderlays := uint32(0)
@@ -409,8 +407,14 @@ func (self *ListenerCtrlChannel) HandleUnderlayClose(ch channel.MultiChannel, un
 		WithField("underlays", ch.GetUnderlayCountsByType()).
 		WithField("underlayType", channel.GetUnderlayType(underlay)).
 		Info("underlay closed")
+	if ch.GetUnderlayCountsByType()[ChannelTypeHighPriority] == 0 {
+		self.hasHighPriorityChan.Store(false)
+	}
 	self.constraints.CheckStateValid(ch, true)
 }
 
-func (self *ListenerCtrlChannel) HandleUnderlayAccepted(channel.MultiChannel, channel.Underlay) {
+func (self *ListenerCtrlChannel) HandleUnderlayAccepted(_ channel.MultiChannel, underlay channel.Underlay) {
+	if channel.GetUnderlayType(underlay) == ChannelTypeHighPriority {
+		self.hasHighPriorityChan.Store(true)
+	}
 }

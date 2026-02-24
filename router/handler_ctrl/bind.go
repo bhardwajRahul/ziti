@@ -106,7 +106,7 @@ func terminatorValidatorWorker(_ uint32, f func()) {
 }
 
 func (self *bindHandler) BindChannel(binding channel.Binding) error {
-	if !capabilities.IsCapable(binding.GetChannel().Underlay(), capabilities.ControllerSupportsJWTLegacySessions) {
+	if !capabilities.IsCapable(binding.GetChannel().Underlay().Headers(), capabilities.ControllerSupportsJWTLegacySessions) {
 		pfxlog.Logger().WithField("ctrlId", binding.GetChannel().Id()).
 			Error("controller does not support JWT format legacy sessions, use with controller versions 2.0+")
 		return fmt.Errorf("controller %s does not support JWT format legacy sessions", binding.GetChannel().Id())

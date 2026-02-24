@@ -117,3 +117,13 @@ func (request *LinkStateUpdate) GetContentType() int32 {
 func (request *Alerts) GetContentType() int32 {
 	return int32(ContentType_AlertsType)
 }
+
+// Legacy header IDs used by pre-2.0 routers. These collide with channel library
+// headers (GroupSecretHeader=10, IsFirstGroupConnection=11, UnderlayTypeHeader=12),
+// but old routers don't send grouped channel headers so there's no actual conflict.
+const (
+	LegacyListenersHeader      int32 = 10
+	LegacyRouterMetadataHeader int32 = 11
+	LegacyCapabilitiesHeader   int32 = 12
+)
+

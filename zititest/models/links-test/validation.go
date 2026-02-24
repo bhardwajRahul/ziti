@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/michaelquigley/pfxlog"
@@ -28,8 +29,10 @@ import (
 	"github.com/openziti/fablab/kernel/model"
 	"github.com/openziti/ziti/v2/common/pb/mgmt_pb"
 	"github.com/openziti/ziti/v2/controller/rest_client/link"
+	"github.com/openziti/ziti/v2/controller/rest_model"
 	"github.com/openziti/ziti/v2/zitirest"
 	"github.com/openziti/ziti/zititest/zitilab/chaos"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -101,7 +104,9 @@ func validateLinksForCtrl(run model.Run, c *model.Component, deadline time.Time)
 	if allLinksPresent {
 		logger.Infof("all links present, elapsed time: %v", time.Since(start))
 	} else {
-		return fmt.Errorf("fail to reach expected link count of 79800 on controller %v", c.Id)
+		linkCount, _ := getLinkCount(clients)
+		logLinkDiagnostics(logger, clients, linkCount)
+		return fmt.Errorf("fail to reach expected link count of 79800 on controller %v (got %v)", c.Id, linkCount)
 	}
 
 	for {
@@ -200,6 +205,11 @@ func validateRouterLinks(id string, clients *zitirest.Clients) (int, error) {
 			for _, linkDetail := range routerDetail.LinkDetails {
 				if !linkDetail.IsValid {
 					invalid++
+					logger.Infof("INVALID link %v on router %v (%v): ctrlState=%v routerState=%v destRouter=%v destConnected=%v dialed=%v messages=%v",
+						linkDetail.LinkId, routerDetail.RouterId, routerDetail.RouterName,
+						linkDetail.CtrlState, linkDetail.RouterState,
+						linkDetail.DestRouterId, linkDetail.DestConnected,
+						linkDetail.Dialed, linkDetail.Messages)
 				}
 			}
 			expected--
@@ -210,4 +220,86 @@ func validateRouterLinks(id string, clients *zitirest.Clients) (int, error) {
 		return invalid, nil
 	}
 	return invalid, fmt.Errorf("invalid links found")
+}
+
+func logLinkDiagnostics(logger *logrus.Entry, clients *zitirest.Clients, linkCount int64) {
+	logger.Infof("link count mismatch: expected 79800, got %v, fetching diagnostics", linkCount)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelF()
+
+	filter := "limit none"
+	result, err := clients.Fabric.Link.ListLinks(&link.ListLinksParams{
+		Filter:  &filter,
+		Context: ctx,
+	}, nil)
+	if err != nil {
+		logger.WithError(err).Error("failed to fetch links for diagnostics")
+		return
+	}
+
+	// Build a set of directed src->dst pairs from existing links, and track per-router link counts
+	type directedPair struct {
+		src, dst string
+	}
+
+	existingLinks := map[directedPair][]*rest_model.LinkDetail{}
+	routerLinkCount := map[string]int{}
+	routerIds := map[string]struct{}{}
+
+	for _, l := range result.Payload.Data {
+		src := l.SourceRouter.ID
+		dst := l.DestRouter.ID
+		key := directedPair{src: src, dst: dst}
+		existingLinks[key] = append(existingLinks[key], l)
+		routerLinkCount[src]++
+		routerIds[src] = struct{}{}
+		routerIds[dst] = struct{}{}
+	}
+
+	// Log duplicate links (same src->dst pair with multiple links)
+	for pair, links := range existingLinks {
+		if len(links) > 1 {
+			logger.Infof("DUPLICATE: %v -> %v has %d links:", pair.src, pair.dst, len(links))
+			for _, l := range links {
+				logger.Infof("  link %v: state=%v iteration=%v", *l.ID, *l.State, *l.Iteration)
+			}
+		}
+	}
+
+	// Find routers with fewer links than expected (should be numRouters-1 links sourced from each)
+	expectedPerRouter := len(routerIds) - 1
+	var routersWithMissing []string
+	for id := range routerIds {
+		count := routerLinkCount[id]
+		if count != expectedPerRouter {
+			routersWithMissing = append(routersWithMissing, id)
+			logger.Infof("router %v has %d source links (expected %d)", id, count, expectedPerRouter)
+		}
+	}
+
+	sort.Strings(routersWithMissing)
+
+	// For routers with missing links, find which dest routers are missing
+	for _, srcId := range routersWithMissing {
+		for dstId := range routerIds {
+			if srcId == dstId {
+				continue
+			}
+			key := directedPair{src: srcId, dst: dstId}
+			if _, ok := existingLinks[key]; !ok {
+				// check if the reverse link exists
+				reverseKey := directedPair{src: dstId, dst: srcId}
+				reverseLinks := existingLinks[reverseKey]
+				reverseInfo := "no"
+				if len(reverseLinks) > 0 {
+					reverseInfo = fmt.Sprintf("yes (id=%v, iteration=%v)", *reverseLinks[0].ID, *reverseLinks[0].Iteration)
+				}
+				logger.Infof("MISSING link: %v -> %v (reverse exists: %v)", srcId, dstId, reverseInfo)
+			}
+		}
+	}
+
+	logger.Infof("total links: %v, routers: %v, directed pairs: %v, routers with wrong count: %v",
+		len(result.Payload.Data), len(routerIds), len(existingLinks), len(routersWithMissing))
 }

@@ -21,6 +21,7 @@ import (
 
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/channel/v4"
+	"github.com/openziti/ziti/v2/common/capabilities"
 	"github.com/openziti/ziti/v2/common/ctrlchan"
 	"github.com/openziti/ziti/v2/common/pb/ctrl_pb"
 	"github.com/openziti/ziti/v2/controller/network"
@@ -132,7 +133,21 @@ func (self *CtrlAccepter) Bind(binding channel.Binding) error {
 		}
 
 		r.Listeners = nil
-		if val, found := ch.Underlay().Headers()[int32(ctrl_pb.ControlHeaders_ListenersHeader)]; found {
+		headers := ch.Underlay().Headers()
+
+		// Determine header locations based on router capabilities. 2.0+ routers
+		// send a CapabilitiesHeader with RouterMultiChannel set and use header IDs
+		// in the 1000+ range. Pre-2.0 routers use legacy IDs (10-12) and don't
+		// send a CapabilitiesHeader.
+		r.Capabilities = capabilities.GetCapabilities(headers)
+		useNewHeaders := capabilities.IsSet(r.Capabilities, capabilities.RouterMultiChannel)
+
+		listenersHeaderId := ctrl_pb.LegacyListenersHeader
+		if useNewHeaders {
+			listenersHeaderId = int32(ctrl_pb.ControlHeaders_ListenersHeader)
+		}
+
+		if val, found := headers[listenersHeaderId]; found {
 			listeners := &ctrl_pb.Listeners{}
 			if err = proto.Unmarshal(val, listeners); err != nil {
 				log.WithError(err).Error("unable to unmarshall listeners value")
@@ -147,14 +162,6 @@ func (self *CtrlAccepter) Bind(binding channel.Binding) error {
 			}
 		} else {
 			log.Debug("no advertised listeners")
-		}
-
-		if val, found := ch.Underlay().Headers()[int32(ctrl_pb.ControlHeaders_RouterMetadataHeader)]; found {
-			routerMetadata := &ctrl_pb.RouterMetadata{}
-			if err = proto.Unmarshal(val, routerMetadata); err != nil {
-				log.WithError(err).Error("unable to unmarshall router metadata value")
-			}
-			r.SetMetadata(routerMetadata)
 		}
 	} else {
 		return errors.New("channel provided no headers, not accepting router connection as version info not provided")

@@ -23,6 +23,7 @@ import (
 	stderr "errors"
 	"fmt"
 	"io/fs"
+	"math/big"
 	"net"
 	"os"
 	"os/signal"
@@ -50,6 +51,7 @@ import (
 	"github.com/openziti/xweb/v3"
 	"github.com/openziti/ziti/v2/common"
 	"github.com/openziti/ziti/v2/common/alert"
+	"github.com/openziti/ziti/v2/common/capabilities"
 	"github.com/openziti/ziti/v2/common/config"
 	"github.com/openziti/ziti/v2/common/ctrlchan"
 	"github.com/openziti/ziti/v2/common/health"
@@ -255,19 +257,10 @@ func (self *Router) GetDialHeaders() (channel.Headers, error) {
 		headers[int32(ctrl_pb.ControlHeaders_ListenersHeader)] = buf
 	}
 
-	routerMeta := &ctrl_pb.RouterMetadata{
-		Capabilities: []ctrl_pb.RouterCapability{
-			ctrl_pb.RouterCapability_LinkManagement,
-		},
-	}
+	capabilityMask := &big.Int{}
+	capabilityMask.SetBit(capabilityMask, capabilities.RouterMultiChannel, 1)
+	headers[int32(ctrl_pb.ControlHeaders_CapabilitiesHeader)] = capabilityMask.Bytes()
 
-	buf, err := proto.Marshal(routerMeta)
-
-	if err != nil {
-		return nil, fmt.Errorf("unable to router metadata (%w)", err)
-	}
-
-	headers[int32(ctrl_pb.ControlHeaders_RouterMetadataHeader)] = buf
 	return headers, nil
 }
 
