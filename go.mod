@@ -22,7 +22,7 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/fullsailor/pkcs7 v0.0.0-20190404230743-d7302db945fa
 	github.com/gaissmai/extnetip v1.3.1
-	github.com/go-acme/lego/v4 v4.31.0
+	github.com/go-acme/lego/v4 v4.32.0
 	github.com/go-jose/go-jose/v4 v4.1.3
 	github.com/go-openapi/errors v0.22.6
 	github.com/go-openapi/jsonpointer v0.22.4
@@ -66,10 +66,10 @@ require (
 	github.com/openziti/identity v1.0.125
 	github.com/openziti/jwks v1.0.6
 	github.com/openziti/metrics v1.4.3
-	github.com/openziti/runzmd v1.0.88
+	github.com/openziti/runzmd v1.0.89
 	github.com/openziti/sdk-golang v1.4.2
 	github.com/openziti/secretstream v0.1.47
-	github.com/openziti/storage v0.4.37
+	github.com/openziti/storage v0.4.38
 	github.com/openziti/transport/v2 v2.0.209
 	github.com/openziti/x509-claims v1.0.3
 	github.com/openziti/xweb/v3 v3.0.3
@@ -93,7 +93,7 @@ require (
 	go.uber.org/atomic v1.11.0
 	go4.org v0.0.0-20260112195520-a5071408f32f
 	golang.org/x/crypto v0.48.0
-	golang.org/x/exp v0.0.0-20260112195511-716be5621a96
+	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa
 	golang.org/x/net v0.50.0
 	golang.org/x/oauth2 v0.35.0
 	golang.org/x/sync v0.19.0
@@ -114,7 +114,7 @@ require (
 	github.com/MichaelMure/go-term-text v0.3.1 // indirect
 	github.com/alecthomas/chroma v0.10.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
-	github.com/antchfx/xpath v1.3.5 // indirect
+	github.com/antchfx/xpath v1.3.6 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/biogo/store v0.0.0-20200525035639-8c94ae1e7c9c // indirect
@@ -124,7 +124,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
-	github.com/clipperhouse/uax29/v2 v2.4.0 // indirect
+	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/creack/pty v1.1.11 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -150,7 +150,7 @@ require (
 	github.com/go-openapi/swag/typeutils v0.25.4 // indirect
 	github.com/go-openapi/swag/yamlutils v0.25.4 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
-	github.com/gomarkdown/markdown v0.0.0-20250810172220-2e2c11897d1a // indirect
+	github.com/gomarkdown/markdown v0.0.0-20260217112301-37c66b85d6ab // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-metrics v0.5.4 // indirect
 	github.com/hashicorp/go-msgpack/v2 v2.1.5 // indirect
@@ -163,7 +163,7 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20260216142805-b3301c5f2a88 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mattn/go-runewidth v0.0.19 // indirect
+	github.com/mattn/go-runewidth v0.0.20 // indirect
 	github.com/mattn/go-tty v0.0.3 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
@@ -208,8 +208,8 @@ require (
 	go.opentelemetry.io/otel/metric v1.40.0 // indirect
 	go.opentelemetry.io/otel/trace v1.40.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/mod v0.32.0 // indirect
-	golang.org/x/tools v0.41.0 // indirect
+	golang.org/x/mod v0.33.0 // indirect
+	golang.org/x/tools v0.42.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	nhooyr.io/websocket v1.8.17 // indirect
 )
