@@ -89,7 +89,11 @@ when running HA. Legacy API and service session are now deprecated and will be r
 * Build updated to Go 1.25
 * CLI cleaned up to remove calls to `os.Exit`, making it more friendly for embedding
 * Controller Edge APIs now return `WWW-Authenticate` response headers on `401 Unauthorized` responses, giving clients actionable information about which auth methods are accepted and what went wrong
-
+* HA Controllers can be marked as 'preferredLeader' via config
+* Dynamic cost range for smart routing expanded beyond the previous 64K limit
+* Dial failures now return the circuit ID and error information for easier debugging
+* Router-to-controller control channels now support multiple underlays with priority-based message routing
+* The dialing identity's ID and name are now forwarded to the hosting SDK
 
 ## Basic Permission System (BETA)
 
@@ -698,35 +702,109 @@ WWW-Authenticate: Bearer realm="openziti-secondary-ext-jwt" error="missing" erro
 
 Unauthenticated endpoints such as version information do not return `WWW-Authenticate` headers.
 
+## HA Preferred Leaders
+
+Controllers can be marked as a preferred leader. 
+
+**Example Config**
+```yaml
+cluster:
+  dataDir: /home/{{ .Model.MustVariable "credentials.ssh.username" }}/fablab/ctrldata
+  preferredLeader: true
+```
+
+If a controller that is not marked preferredLeader becomes a preferredLeader, it will check 
+if there's a node available that is marked as preferred. If there is one, or one later
+joins the cluster, the non-preferred node will attempt to transfer leadership to the 
+node that is marked as preferred.
+
+## Expanded Dynamic Cost Range
+
+The dynamic cost range for smart routing has been expanded beyond the previous 64K limit. Under high
+load, terminators could saturate the cost space, making dynamic cost values meaningless for routing
+decisions and leading to uneven load distribution. The expanded range allows for more granular cost
+differentiation even under heavy load.
+
+## Circuit ID and Error in Dial Failures
+
+Dial failures now return the circuit ID and, when available, the error that caused the circuit to fail.
+Previously, the circuit ID was only returned on successful dials. Note that SDKs will need to be
+updated to surface the circuit id when a dial failure happens.
+
+## Multi-Underlay Control Channels
+
+Router-to-controller control channels now support multiple underlays with priority-based message routing.
+This allows time-sensitive control messages (heartbeats, routing, circuit requests) to be separated from
+operational data (metrics, inspections) across dedicated TCP connections, preventing bulk operations from
+delaying user-affecting control plane traffic.
+
+## Dialing Identity Forwarded to Hosting SDK
+
+The identity ID and name of the dialing client are now forwarded to the hosting SDK when a circuit is
+established. This allows hosting applications to identify which identity initiated the connection,
+enabling identity-aware request handling on the server side. This will require SDK updates to add this
+to the API for hosting applications.
+
 ## Component Updates and Bug Fixes
 
-* github.com/openziti/channel/v4: [v4.2.41 -> v4.2.50](https://github.com/openziti/channel/compare/v4.2.41...v4.2.50)
-* github.com/openziti/edge-api: [v0.26.50 -> v0.26.52](https://github.com/openziti/edge-api/compare/v0.26.50...v0.26.52)
+* github.com/openziti/channel/v4: [v4.2.41 -> v4.3.5](https://github.com/openziti/channel/compare/v4.2.41...v4.3.5)
+    * [Issue #228](https://github.com/openziti/channel/issues/228) - Ensure that Underlay never return nil on MultiChannel
+    * [Issue #226](https://github.com/openziti/channel/issues/226) - Allow specifying a minimum number of underlays for a channel, regardless of underlay type
+    * [Issue #225](https://github.com/openziti/channel/issues/225) - Add ChannelCreated to the UnderlayHandler API to allow handlers to be initialized with the channel before binding
+    * [Issue #224](https://github.com/openziti/channel/issues/224) - Update the underlay dispatcher to allow unknown underlay types to fall through to the default
+    * [Issue #222](https://github.com/openziti/channel/issues/222) - Allow injecting the underlay type into messages
+
+* github.com/openziti/edge-api: [v0.26.50 -> v0.26.53](https://github.com/openziti/edge-api/compare/v0.26.50...v0.26.53)
     * [Issue #164](https://github.com/openziti/edge-api/issues/164) - Add permissions list to identity
 
-* github.com/openziti/foundation/v2: [v2.0.79 -> v2.0.84](https://github.com/openziti/foundation/compare/v2.0.79...v2.0.84)
+* github.com/openziti/foundation/v2: [v2.0.79 -> v2.0.87](https://github.com/openziti/foundation/compare/v2.0.79...v2.0.87)
     * [Issue #464](https://github.com/openziti/foundation/issues/464) - Add support for -pre in versions
 
-* github.com/openziti/identity: [v1.0.118 -> v1.0.122](https://github.com/openziti/identity/compare/v1.0.118...v1.0.122)
+* github.com/openziti/identity: [v1.0.118 -> v1.0.125](https://github.com/openziti/identity/compare/v1.0.118...v1.0.125)
 * github.com/openziti/metrics: [v1.4.2 -> v1.4.3](https://github.com/openziti/metrics/compare/v1.4.2...v1.4.3)
     * [Issue #56](https://github.com/openziti/metrics/issues/56) - underlying resources of reference counted meters are not cleaned up when reference count hits zero
 
-* github.com/openziti/runzmd: [v1.0.84 -> v1.0.86](https://github.com/openziti/runzmd/compare/v1.0.84...v1.0.86)
-* github.com/openziti/sdk-golang: [v1.2.10 -> v1.3.1](https://github.com/openziti/sdk-golang/compare/v1.2.10...v1.3.1)
+* github.com/openziti/runzmd: [v1.0.84 -> v1.0.89](https://github.com/openziti/runzmd/compare/v1.0.84...v1.0.89)
+* github.com/openziti/sdk-golang: [v1.2.10 -> v1.4.2](https://github.com/openziti/sdk-golang/compare/v1.2.10...v1.4.2)
+    * [Issue #860](https://github.com/openziti/sdk-golang/issues/860) - Make the dialing identity's id and name available on dialed connections
+    * [Issue #857](https://github.com/openziti/sdk-golang/issues/857) - Use new error code and retry hints to correctly react to terminator errors
+    * [Issue #847](https://github.com/openziti/sdk-golang/issues/847) - Ensure the initial version check succeeds, to ensure we don't legacy sessions on ha or oidc-enabled controllers
     * [Issue #824](https://github.com/openziti/sdk-golang/pull/824) - release notes and hard errors on no TOTP handler breaks partial auth events
 
-* github.com/openziti/secretstream: [v0.1.41 -> v0.1.46](https://github.com/openziti/secretstream/compare/v0.1.41...v0.1.46)
-* github.com/openziti/storage: [v0.4.31 -> v0.4.35](https://github.com/openziti/storage/compare/v0.4.31...v0.4.35)
+* github.com/openziti/secretstream: [v0.1.41 -> v0.1.47](https://github.com/openziti/secretstream/compare/v0.1.41...v0.1.47)
+* github.com/openziti/storage: [v0.4.31 -> v0.4.38](https://github.com/openziti/storage/compare/v0.4.31...v0.4.38)
     * [Issue #122](https://github.com/openziti/storage/issues/122) - StringFuncNode has incorrect nil check, allowing panic
     * [Issue #120](https://github.com/openziti/storage/issues/120) - Change post tx commit constraint handling order
     * [Issue #119](https://github.com/openziti/storage/issues/119) - Add ContextDecorator API
 
-* github.com/openziti/transport/v2: [v2.0.198 -> v2.0.205](https://github.com/openziti/transport/compare/v2.0.198...v2.0.205)
+* github.com/openziti/transport/v2: [v2.0.198 -> v2.0.209](https://github.com/openziti/transport/compare/v2.0.198...v2.0.209)
 * github.com/openziti/xweb/v3: [v2.3.4 -> v3.0.3](https://github.com/openziti/xweb/compare/v2.3.4...v3.0.3)
     * [Issue #32](https://github.com/openziti/xweb/issues/32) - watched identities sometimes don't reload when changed
 
-* github.com/openziti/ziti: [v1.7.0 -> v1.8.0](https://github.com/openziti/ziti/compare/v1.7.0...v1.8.0)
+* github.com/openziti/ziti/v2: [v1.7.0 -> v2.0.0](https://github.com/openziti/ziti/compare/v1.7.0...v2.0.0)
+    * [Issue #3599](https://github.com/openziti/ziti/issues/3599) - Add gap detection and handling to router data model
+    * [Issue #3074](https://github.com/openziti/ziti/issues/3074) - Dynamic cost range is too limited
+    * [Issue #3558](https://github.com/openziti/ziti/issues/3558) - terminator cost increased on egress dial success, not on circuit completion
+    * [Issue #3556](https://github.com/openziti/ziti/issues/3556) - global circuit costs not cleared when terminator is deleted
+    * [Issue #3557](https://github.com/openziti/ziti/issues/3557) - costing calculation for the weighted terminator selection strategy  is incorrect
+    * [Issue #2512](https://github.com/openziti/ziti/issues/2512) - Return circuit ID and error in dial failures
+    * [Issue #3569](https://github.com/openziti/ziti/issues/3569) - Version 2.0+ routers should not connect to controllers which do not support JWT formatted legacy sessions
+    * [Issue #3565](https://github.com/openziti/ziti/issues/3565) - Link dialer save 'is first conn' true, so all dials claim to be first, causing potential race condition
+    * [Issue #3550](https://github.com/openziti/ziti/issues/3550) - Support multi-underlay control channels
+    * [Issue #3535](https://github.com/openziti/ziti/issues/3535) - Remove the legacy xgress_edge_tunnel implementation
+    * [Issue #3547](https://github.com/openziti/ziti/issues/3547) - Add support for sending the dialing identity id and name to the hosting sdk
+    * [Issue #3541](https://github.com/openziti/ziti/issues/3541) - Remove option to disable the router data model in the controller
+    * [Issue #3540](https://github.com/openziti/ziti/issues/3540) - Handle UDP difference between proxy and tproxy implementations
+    * [Issue #3527](https://github.com/openziti/ziti/issues/3527) - ER/T UDP tunnels keep closed connections for 30s, preventing potential new good connections in that time
+    * [Issue #3526](https://github.com/openziti/ziti/issues/3526) - ER/T half-close logic is incorrect
+    * [Issue #3524](https://github.com/openziti/ziti/issues/3524) - Provide more error context to SDKs for terminator errors
     * [Issue #3509](https://github.com/openziti/ziti/issues/3509) - Enforce policy on the router for oidc sessions, by closing open circuits and terminators when service access is lost
+    * [Issue #3531](https://github.com/openziti/ziti/issues/3531) - Remove created/updated/deleted terminator events. Obsoleted by entity change events.
+    * [Issue #3532](https://github.com/openziti/ziti/issues/3532) - Removed deprecated create identity <type> subcommands
+    * [Issue #3521](https://github.com/openziti/ziti/issues/3521) - Cleanup CLI to remove calls to os.Exit to be embed friendlier
+    * [Issue #3516](https://github.com/openziti/ziti/issues/3516) - Remove support for create terminator v1
+    * [Issue #3512](https://github.com/openziti/ziti/issues/3512) - Remove legacy link management code from the controller
+    * [Issue #3511](https://github.com/openziti/ziti/issues/3511) - router proxy mode fails to resolve interface if binding is 0.0.0.0
     * [Issue #3503](https://github.com/openziti/ziti/issues/3503) - Allow routers to request current cluster membership information
     * [Issue #3501](https://github.com/openziti/ziti/issues/3501) - Get cluster membership information from raft directly, rather than trying to cache it in the DB
     * [Issue #3500](https://github.com/openziti/ziti/issues/3500) - Set a router data model timeline when initializing a new HA setup, rather than letting it stay blank
