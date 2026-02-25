@@ -272,33 +272,30 @@ func Test_Authenticate_Updb_Lockout_Duration(t *testing.T) {
 		},
 	}
 	ctx.Req.NoError(ctx.Managers.CreateAuthPolicy(authPolicy))
-	_, testUserAuthenticator, err := ctx.Managers.NewIdentityWithUpdb(authPolicy.Id)
+	testUserIdentity, testUserAuthenticator, err := ctx.Managers.NewIdentityWithUpdb(authPolicy.Id)
 	ctx.Req.NoError(err)
 
 	t.Run("login should succeed after lockout duration has elapsed", func(t *testing.T) {
 		ctx.testContextChanged(t)
 
 		username := testUserAuthenticator.Username
-		maxAttempts := int(authPolicy.Primary.Updb.MaxAttempts)
-		lockoutDuration := int(authPolicy.Primary.Updb.LockoutDurationMinutes)
+
+		// Disable directly with a short duration to avoid a 60s wait from the policy's LockoutDurationMinutes.
+		// The re-enable mechanism only depends on DisabledUntil, not on how the lockout was triggered.
+		err := ctx.EdgeController.AppEnv.Managers.Identity.Disable(testUserIdentity.Id, 5*time.Second, nil)
+		ctx.Req.NoError(err)
+
+		identity, err := ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
+		ctx.Req.NoError(err)
+		ctx.Req.True(identity.Disabled)
+
+		time.Sleep(5 * time.Second)
+
+		identity, err = ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
+		ctx.Req.NoError(err)
+		ctx.Req.False(identity.Disabled)
+
 		clientApi := ctx.NewEdgeClientApi(nil)
-
-		for attempt := 1; attempt <= maxAttempts; attempt++ {
-			creds := edge_apis.NewUpdbCredentials(username, "wrong_password")
-			_, err := clientApi.Authenticate(creds, nil)
-			ctx.Req.Error(err)
-		}
-
-		testUserIdentity, err := ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
-		ctx.Req.NoError(err)
-		ctx.Req.True(testUserIdentity.Disabled)
-
-		time.Sleep(time.Duration(lockoutDuration)*time.Minute + 5*time.Second)
-
-		testUserIdentity, err = ctx.EdgeController.AppEnv.Managers.Identity.ReadByName(username)
-		ctx.Req.NoError(err)
-		ctx.Req.False(testUserIdentity.Disabled)
-
 		creds := edge_apis.NewUpdbCredentials(username, testUserAuthenticator.Password)
 		apiSession, err := clientApi.Authenticate(creds, nil)
 		ctx.Req.NoError(err)
