@@ -115,6 +115,7 @@ type TestContext struct {
 	*CustomAssertions
 	ApiHost                string
 	AdminAuthenticator     *updbAuthenticator
+	Managers               *ManagerHelpers
 	AdminManagementSession *session
 	AdminClientSession     *session
 	RestClients            *zitirest.Clients
@@ -133,11 +134,17 @@ type TestContext struct {
 	ControllerConfig    *config.Config
 }
 
-var defaultTestContext = &TestContext{
-	AdminAuthenticator: &updbAuthenticator{
-		Username: eid.New(),
-		Password: eid.New(),
-	},
+var defaultTestContext = newDefaultTestContext()
+
+func newDefaultTestContext() *TestContext {
+	ctx := &TestContext{
+		AdminAuthenticator: &updbAuthenticator{
+			Username: eid.New(),
+			Password: eid.New(),
+		},
+	}
+	ctx.Managers = &ManagerHelpers{ctx: ctx}
+	return ctx
 }
 
 func NewTestContext(t *testing.T) *TestContext {
@@ -149,6 +156,7 @@ func NewTestContext(t *testing.T) *TestContext {
 		},
 		LogLevel: os.Getenv("ZITI_TEST_LOG_LEVEL"),
 	}
+	ret.Managers = &ManagerHelpers{ctx: ret}
 	ret.testContextChanged(t)
 
 	return ret
@@ -434,8 +442,8 @@ func (ctx *TestContext) StartServerFor(testDb string, clean bool) {
 		log.WithError(err).Warn("error during initialize admin")
 	}
 
-	logrus.Infof("username: %v", ctx.AdminAuthenticator.Username)
-	logrus.Infof("password: %v", ctx.AdminAuthenticator.Password)
+	logrus.Infof("default admin - username: %v", ctx.AdminAuthenticator.Username)
+	logrus.Infof("default admin - password: %v", ctx.AdminAuthenticator.Password)
 
 	ctx.EdgeController.Run()
 	go func() {

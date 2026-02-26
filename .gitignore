@@ -19,6 +19,9 @@ release/
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
+# ai agents
+.claude
+
 # goland
 .idea
 github_deploy_key
