@@ -82,6 +82,9 @@ func InitClusterId(db boltz.Db, ctx boltz.MutateContext, clusterId string) error
 		}
 		currentId := raftBucket.GetStringWithDefault(FieldClusterId, "")
 		if currentId != "" {
+			if currentId == clusterId {
+				return nil
+			}
 			return fmt.Errorf("cluster id already initialized to %s", currentId)
 		}
 		raftBucket.SetString(FieldClusterId, clusterId, nil)
