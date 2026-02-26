@@ -174,6 +174,7 @@ func (o *LoginOptions) newHttpClient(tryCachedCreds bool) (http.Client, error) {
 		if loginErr != nil {
 			return http.Client{}, loginErr
 		}
+		o.MergeUnsetFrom(cached)
 	}
 	t, cte := o.createHttpTransport()
 	if cte != nil {
@@ -781,6 +782,8 @@ func (o *LoginOptions) Login() (edge_apis.ApiSession, error) {
 			return nil, err
 		}
 		authCreds = edge_apis.NewIdentityCredentialsFromConfig(cfg.ID)
+	} else if o.ExtJwtToken != "" {
+		authCreds = edge_apis.NewJwtCredentials(o.ExtJwtToken)
 	} else if o.extJwtFile != "" {
 		jwt, jwtErr := os.ReadFile(o.extJwtFile)
 		if jwtErr != nil {
