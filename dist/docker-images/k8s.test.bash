@@ -171,15 +171,24 @@ if [[ -z "${ZITI_INGRESS_ZONE}" ]]; then
         exit 1
     fi
 fi
-ZITI_CTRL_ADVERTISED_ADDRESS="miniziti-controller.${ZITI_INGRESS_ZONE}"
+ZITI_CTRL_ADVERTISED_ADDRESS="${ZITI_NAMESPACE}-controller.${ZITI_INGRESS_ZONE}"
 
-# verify console is available
-curl -skSfw '%{http_code}\t%{url}\n' -o/dev/null "https://${ZITI_CTRL_ADVERTISED_ADDRESS}:${ZITI_CTRL_ADVERTISED_PORT}/zac/"
+# verify console is available (retry — the endpoint may need a moment after deployment)
+for (( _attempt = 1; _attempt <= 10; _attempt++ )); do
+    _status=$(curl -skSfw '%{http_code}' -o/dev/null "https://${ZITI_CTRL_ADVERTISED_ADDRESS}:${ZITI_CTRL_ADVERTISED_PORT}/zac/" 2>/dev/null || true)
+    echo "attempt ${_attempt}/10: HTTP ${_status} — https://${ZITI_CTRL_ADVERTISED_ADDRESS}:${ZITI_CTRL_ADVERTISED_PORT}/zac/"
+    [[ "${_status}" == "200" ]] && break
+    if (( _attempt == 10 )); then
+        echo "ERROR: ZAC console returned HTTP ${_status} after 10 attempts" >&2
+        exit 1
+    fi
+    sleep 6
+done
 
 ZITI_PWD=$(
     minikube kubectl --profile "${ZITI_NAMESPACE}" -- \
         --context "${ZITI_NAMESPACE}" \
-        get secrets "ziti-controller-admin-secret" \
+        get secrets "ziti-controller1-admin-secret" \
         --namespace "${ZITI_NAMESPACE}" \
         --output go-template='{{index .data "admin-password" | base64decode }}'
 )
@@ -187,10 +196,10 @@ ZITI_PWD=$(
 
 export \
 ZITI_PWD \
-ZITI_ROUTER_NAME="miniziti-router" \
+ZITI_ROUTER_NAME="${ZITI_NAMESPACE}-router" \
 ZITI_CTRL_EDGE_ADVERTISED_ADDRESS="${ZITI_CTRL_ADVERTISED_ADDRESS}" \
 ZITI_CTRL_EDGE_ADVERTISED_PORT="${ZITI_CTRL_ADVERTISED_PORT}" \
-ZITI_TEST_BIND_ADDRESS="ziti-controller-client.${ZITI_NAMESPACE}.svc.cluster.local"
+ZITI_TEST_BIND_ADDRESS="ziti-controller1-client.${ZITI_NAMESPACE}.svc.cluster.local"
 
 _test_result=$(go test -v -count=1 -tags="quickstart manual" ./ziti/run/...)
 

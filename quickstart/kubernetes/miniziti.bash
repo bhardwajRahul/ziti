@@ -247,7 +247,7 @@ installHosts() {
 }
 
 getAdminSecret() {
-    kubectlWrapper get secrets "ziti-controller-admin-secret" \
+    kubectlWrapper get secrets "ziti-controller1-admin-secret" \
         --namespace "$ZITI_NAMESPACE" \
         --output go-template='{{index .data "admin-password" | base64decode }}'
 }
@@ -465,7 +465,8 @@ main(){
     exec 3>/dev/null
 
     # local strings with defaults that never produce an error
-    declare DELETE_MINIZITI=0 \
+    declare CHECK_CERT_SUBJECT=0 \
+            DELETE_MINIZITI=0 \
             DETECTED_OS \
             DO_ZITI_LOGIN=0 \
             HELM_INCLUDE_DEVEL=0 \
@@ -491,7 +492,6 @@ main(){
     DETECTED_OS="$(detectOs)"
     : "${DEBUG_MINIKUBE_TUNNEL:=0}"  # set env = 1 to trigger the minikube tunnel probe
     : "${MINIZITI_TIMEOUT_SECS:=240}"
-    : "${ZITI_NETWORK_NAME:=miniziti-controller}"
     MINIZITI_CONFIGMAP="miniziti-config"
     ZITI_CLI_HOME="$(getZitiCliHome)"
     ZITI_CLI_CERTS_DIR="$ZITI_CLI_HOME/certs"
@@ -608,6 +608,10 @@ main(){
             --now)          SAFETY_WAIT=0
                             shift
             ;;
+            --check-cert-subject)
+                            CHECK_CERT_SUBJECT=1
+                            shift
+            ;;
             --no-hosts)     MINIZITI_HOSTS=0
                             shift
             ;;
@@ -637,6 +641,7 @@ main(){
     done
 
     : "${ZITI_NAMESPACE:=${MINIKUBE_PROFILE}}"
+    : "${ZITI_NETWORK_NAME:=${MINIKUBE_PROFILE}-controller}"
 
     MINIZITI_INGRESS_ZONE="$MINIKUBE_PROFILE.internal"
     MINIZITI_INTERCEPT_ZONE="$MINIKUBE_PROFILE.private"
@@ -945,13 +950,26 @@ EOF
     ## Ensure OpenZiti Controller is Upgraded and Ready
     #
 
+    # Capture the current controller pod UID (if any) so we can detect whether
+    # the helm upgrade causes a pod replacement.  When the controller restarts it
+    # generates a new ephemeral OIDC JWT signing key; the router must also be
+    # restarted to re-fetch the JWKS or it will reject JWTs signed by the new key.
+    local ctrl_pod_uid_before
+    ctrl_pod_uid_before=$(kubectlWrapper get pods \
+        --selector app.kubernetes.io/component=ziti-controller \
+        --namespace "${ZITI_NAMESPACE}" \
+        --output jsonpath='{.items[0].metadata.uid}' 2>/dev/null || true)
+
     logInfo "installing openziti controller chart"
     if (( ZITI_CHARTS_ALT )) && [[ -s "${ZITI_CHARTS_REF}/ziti-controller/Chart.lock" ]]; then
         helmWrapper dependency build "${ZITI_CHARTS_REF}/ziti-controller" >&3
     fi
-    local -a _controller_cmd=(upgrade --install "ziti-controller" "${ZITI_CHARTS_REF}/ziti-controller"
+    local -a _controller_cmd=(upgrade --install "ziti-controller1" "${ZITI_CHARTS_REF}/ziti-controller"
         --namespace "${ZITI_NAMESPACE}" --create-namespace
         --set clientApi.advertisedHost="${ZITI_NETWORK_NAME}.${MINIZITI_INGRESS_ZONE}"
+        --set cluster.mode=cluster-init
+        --set "cluster.trustDomain=${MINIZITI_INGRESS_ZONE}"
+        --set cluster.nodeName=ziti-controller1
         --values "${ZITI_CHARTS_URL}/ziti-controller/values-traefik-ingressroutetcp.yaml"
     )
     if (( HELM_INCLUDE_DEVEL )) && (( ! ZITI_CHARTS_ALT )); then
@@ -963,7 +981,7 @@ EOF
     helmWrapper "${_controller_cmd[@]}" >&3
 
     local web_identity_cert_name
-    web_identity_cert_name="ziti-controller-web-identity-cert"
+    web_identity_cert_name="ziti-controller1-web-identity-cert"
     logInfo "waiting for cert-manager certificate '${web_identity_cert_name}' to be ready"
     for ((i=0; i<MINIZITI_TIMEOUT_SECS; i++)); do
         if kubectlWrapper get certificate.cert-manager.io "${web_identity_cert_name}" --namespace "${ZITI_NAMESPACE}" >/dev/null 2>&1; then
@@ -976,20 +994,54 @@ EOF
         --namespace "${ZITI_NAMESPACE}" \
         --for condition=Ready=True \
         --timeout "${MINIZITI_TIMEOUT_SECS}s" >&3
-
-    logInfo "restarting ziti-controller deployment to reload reissued certificates"
-    kubectlWrapper rollout restart deployment/ziti-controller \
-        --namespace "${ZITI_NAMESPACE}" >&3
+    local web_identity_secret_name="ziti-controller1-web-identity-secret"
 
     logDebug "setting default namespace '${ZITI_NAMESPACE}' in kubeconfig context '${MINIKUBE_PROFILE}'"
         kubectlWrapper config set-context "${MINIKUBE_PROFILE}" \
             --namespace "${ZITI_NAMESPACE}" >&3
 
-    logInfo "waiting for ziti-controller to be ready"
-    kubectlWrapper wait deployments ziti-controller \
+    logInfo "waiting for ziti-controller1 to be ready"
+    kubectlWrapper wait deployments ziti-controller1 \
             --namespace "${ZITI_NAMESPACE}" \
             --for condition=Available=True \
             --timeout "${MINIZITI_TIMEOUT_SECS}s" >&3
+
+    # Detect whether the controller pod was replaced during the helm upgrade.
+    local ctrl_pod_uid_after ctrl_restarted=0
+    ctrl_pod_uid_after=$(kubectlWrapper get pods \
+        --selector app.kubernetes.io/component=ziti-controller \
+        --namespace "${ZITI_NAMESPACE}" \
+        --output jsonpath='{.items[0].metadata.uid}' 2>/dev/null || true)
+    if [[ -n "${ctrl_pod_uid_before}" && "${ctrl_pod_uid_before}" != "${ctrl_pod_uid_after}" ]]; then
+        ctrl_restarted=1
+        logInfo "controller pod was replaced during upgrade (OIDC signing key regenerated)"
+    fi
+
+    if (( CHECK_CERT_SUBJECT )); then
+        checkCommand openssl
+        checkCommand base64
+
+        local cert_subject
+        if cert_subject=$(kubectlWrapper get secret "${web_identity_secret_name}" --namespace "${ZITI_NAMESPACE}" -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -subject 2>/dev/null); then
+            if [[ ! "${cert_subject}" == *"OpenZiti Community"* ]]; then
+                logError "controller server certificate missing expected subject x509 property 'OpenZiti Community': ${cert_subject}"
+                exit 1
+            fi
+        else
+            logWarn "failed to inspect certificate subject for ${web_identity_secret_name}"
+        fi
+
+        logInfo "inspecting hosted controller server certificate subject"
+        local cert_subject_hosted
+        if cert_subject_hosted=$(echo | openssl s_client -showcerts -connect "${ZITI_NETWORK_NAME}.${MINIZITI_INGRESS_ZONE}:443" 2>/dev/null | openssl x509 -noout -subject 2>/dev/null); then
+            if [[ ! "${cert_subject_hosted}" == *"OpenZiti Community"* ]]; then
+                logError "hosted controller server certificate missing expected subject x509 property 'OpenZiti Community': ${cert_subject_hosted}"
+                exit 1
+            fi
+        else
+            logWarn "failed to inspect hosted certificate subject for ${ZITI_NETWORK_NAME}.${MINIZITI_INGRESS_ZONE}"
+        fi
+    fi
 
     #
     ## Ensure Minikube Tunnel is Running on macOS and WSL
@@ -1103,10 +1155,10 @@ EOF
     logInfo "Setting default ziti identity to: $MINIKUBE_PROFILE"
     zitiWrapper edge use "$MINIKUBE_PROFILE" >&3
 
-    ROUTER_NAME='miniziti-router'
+    ROUTER_NAME="${MINIKUBE_PROFILE}-router"
     ROUTER_OTT="$IDENTITIES_DIR/$ROUTER_NAME.jwt"
     if  zitiWrapper edge list edge-routers "name=\"$ROUTER_NAME\"" \
-        | grep -q miniziti-router; then
+        | grep -qF "$ROUTER_NAME"; then
         logDebug "updating $ROUTER_NAME"
         zitiWrapper edge update edge-router "$ROUTER_NAME" \
             --role-attributes "public-routers" >&3
@@ -1128,7 +1180,7 @@ EOF
     local -a _router_cmd=(upgrade --install "ziti-router" "${ZITI_CHARTS_REF}/ziti-router"
         --namespace "${ZITI_NAMESPACE}"
         --set-file enrollmentJwt="$ROUTER_OTT"
-        --set edge.advertisedHost="miniziti-router.${MINIZITI_INGRESS_ZONE}"
+        --set edge.advertisedHost="${ROUTER_NAME}.${MINIZITI_INGRESS_ZONE}"
         --set ctrl.endpoint="${ZITI_NETWORK_NAME}.${MINIZITI_INGRESS_ZONE}:443"
         --set "tunnel.mode=host"
         --values "${ZITI_CHARTS_URL}/ziti-router/values-traefik-ingressroutetcp.yaml"
@@ -1148,13 +1200,26 @@ EOF
         --for condition=Available=True \
         --timeout "${MINIZITI_TIMEOUT_SECS}s" >&3
 
-    logDebug "probing miniziti-router for online status"
+    # If the controller was replaced during its helm upgrade, the router must be
+    # restarted so it re-fetches the controller's JWKS endpoint and picks up the
+    # new OIDC signing key.  Without this, the router rejects JWTs signed by the
+    # new controller with "public key not found".
+    if (( ctrl_restarted )); then
+        logInfo "restarting ziti-router to refresh OIDC JWKS cache after controller restart"
+        kubectlWrapper rollout restart deployment/ziti-router \
+            --namespace "${ZITI_NAMESPACE}" >&3
+        kubectlWrapper rollout status deployment/ziti-router \
+            --namespace "${ZITI_NAMESPACE}" \
+            --timeout "${MINIZITI_TIMEOUT_SECS}s" >&3
+    fi
+
+    logDebug "probing ${ROUTER_NAME} for online status"
     if zitiWrapper edge list edge-routers "name=\"$ROUTER_NAME\"" \
-        | awk '/miniziti-router/ {print $6}' \
+        | awk -v rname="${ROUTER_NAME}" '$0 ~ rname {print $6}' \
         | grep -q true; then
-        logInfo "miniziti-router is online"
+        logInfo "${ROUTER_NAME} is online"
     else
-        logError "miniziti-router is offline"
+        logError "${ROUTER_NAME} is offline"
         exit 1
     fi
 
