@@ -863,12 +863,12 @@ func LoadConfigWithOptions(path string, loadIdentity bool) (*Config, error) {
 		cfg.ConnectEvents.BatchInterval = MaxConnectEventsBatchInterval
 	}
 
-	if cfg.ConnectEvents.FullSyncInterval < MinConnectEventsBatchInterval {
+	if cfg.ConnectEvents.FullSyncInterval < MinConnectEventsFullSyncInterval {
 		pfxlog.Logger().Warnf("connectEvents.fullSyncInterval less than allowed minimum of %s", MinConnectEventsFullSyncInterval.String())
 		cfg.ConnectEvents.FullSyncInterval = MinConnectEventsFullSyncInterval
 	}
 
-	if cfg.ConnectEvents.FullSyncInterval > MaxConnectEventsBatchInterval {
+	if cfg.ConnectEvents.FullSyncInterval > MaxConnectEventsFullSyncInterval {
 		pfxlog.Logger().Warnf("connectEvents.fullSyncInterval greater than allowed maximum of %s", MaxConnectEventsFullSyncInterval.String())
 		cfg.ConnectEvents.FullSyncInterval = MaxConnectEventsFullSyncInterval
 	}
