@@ -518,19 +518,19 @@ func LoadConfigWithOptions(path string, loadIdentity bool) (*Config, error) {
 						return nil, fmt.Errorf("error loading channel options for [ctrl/options] (%v)", err)
 					}
 				}
+			}
 
-				if value, found := submap["heartbeats"]; found {
-					if submap, ok := value.(map[interface{}]interface{}); ok {
-						options, err := channel.LoadHeartbeatOptions(submap)
-						if err != nil {
-							return nil, err
-						}
-						heartbeats, err := NewHeartbeatOptions(options)
-						if err != nil {
-							return nil, err
-						}
-						cfg.Ctrl.Heartbeats = *heartbeats
+			if value, found := submap["heartbeats"]; found {
+				if submap, ok := value.(map[interface{}]interface{}); ok {
+					options, err := channel.LoadHeartbeatOptions(submap)
+					if err != nil {
+						return nil, err
 					}
+					heartbeats, err := NewHeartbeatOptions(options)
+					if err != nil {
+						return nil, err
+					}
+					cfg.Ctrl.Heartbeats = *heartbeats
 				}
 			}
 			if value, found := submap["defaultRequestTimeout"]; found {
