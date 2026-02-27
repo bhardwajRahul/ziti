@@ -959,7 +959,7 @@ func LoadConfigWithOptions(path string, loadIdentity bool) (*Config, error) {
 					if err != nil {
 						return nil, errors.New("invalid value: interfaceDiscovery.minReportInterval value should be a valid duration")
 					} else {
-						cfg.IfaceDiscovery.CheckInterval = interval
+						cfg.IfaceDiscovery.MinReportInterval = interval
 					}
 				} else {
 					return nil, errors.New("invalid value: interfaceDiscovery.minReportInterval value should be a string representing a duration")
