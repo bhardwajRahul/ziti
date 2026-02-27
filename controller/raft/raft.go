@@ -120,6 +120,7 @@ type Env interface {
 	GetCloseNotify() <-chan struct{}
 	GetHelloHeaderProviders() []mesh.HeaderProvider
 	InitTimelineId(timelineId string)
+	TimelineId() string
 }
 
 func NewController(env Env, migrationMgr MigrationManager) *Controller {
@@ -1023,7 +1024,10 @@ func (self *InitClusterIdCmd) Apply(ctx boltz.MutateContext) error {
 	if err != nil {
 		return err
 	}
-	self.raftController.env.InitTimelineId(self.TimelineId)
+
+	if self.raftController.env.TimelineId() != self.TimelineId {
+		self.raftController.env.InitTimelineId(self.TimelineId)
+	}
 	return db.InitClusterId(self.raftController.Fsm.GetDb(), ctx, self.ClusterId)
 }
 

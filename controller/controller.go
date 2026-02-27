@@ -343,6 +343,10 @@ func (c *Controller) InitTimelineId(timelineId string) {
 	c.env.InitTimelineId(timelineId)
 }
 
+func (c *Controller) TimelineId() string {
+	return c.env.TimelineId()
+}
+
 func (c *Controller) initWeb() {
 	healthChecker, err := c.initializeHealthChecks()
 	if err != nil {
@@ -702,8 +706,6 @@ func (c *Controller) TryInitializeRaftFromBoltDb() error {
 }
 
 func (c *Controller) InitializeRaftFromBoltDb(sourceDbPath string) error {
-	log := pfxlog.Logger()
-
 	if c.raftController == nil {
 		return errors.New("can't initialize non-raft controller using initialize from db")
 	}
@@ -712,56 +714,7 @@ func (c *Controller) InitializeRaftFromBoltDb(sourceDbPath string) error {
 		return errors.New("raft is already bootstrapped, must start with a uninitialized controller")
 	}
 
-	if _, err := os.Stat(sourceDbPath); err != nil {
-		if os.IsNotExist(err) {
-			return errors.Wrapf(err, "source db not found at [%v]", sourceDbPath)
-		}
-		return errors.Wrapf(err, "invalid db path [%v]", sourceDbPath)
-	}
-
-	sourceDb, err := db.Open(sourceDbPath)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err = sourceDb.Close(); err != nil {
-			log.WithError(err).Error("error closing migration source bolt db")
-		}
-	}()
-
-	timelineId, err := sourceDb.GetTimelineId(boltz.TimelineModeForceReset, shortid.Generate)
-	if err != nil {
-		return err
-	}
-	log.WithField("timelineId", timelineId).WithField("path", sourceDbPath).Info("initializing from bolt db")
-
-	buf := &bytes.Buffer{}
-	gzWriter := gzip.NewWriter(buf)
-	if err = sourceDb.StreamToWriter(gzWriter); err != nil {
-		if closeErr := gzWriter.Close(); closeErr != nil {
-			log.WithError(closeErr).Error("error closing db snapshot buffer")
-		}
-		return err
-	}
-
-	if err = gzWriter.Close(); err != nil {
-		return errors.Wrap(err, "error finishing gz compression of migration snapshot")
-	}
-
-	// need to override in case there's an existing db in a restore scenario. See: https://github.com/openziti/ziti/v2/issues/2891
-	c.env.OverrideTimelineId(timelineId)
-
-	cmd := &command.SyncSnapshotCommand{
-		TimelineId:   timelineId,
-		Snapshot:     buf.Bytes(),
-		SnapshotSink: c.network.RestoreSnapshot,
-	}
-
-	if err = c.raftController.Bootstrap(); err != nil {
-		return fmt.Errorf("unable to bootstrap cluster (%w)", err)
-	}
-
-	return c.raftController.Dispatch(cmd)
+	return c.RaftRestoreFromBoltDb(sourceDbPath)
 }
 
 func (c *Controller) RaftRestoreFromBoltDb(sourceDbPath string) error {
