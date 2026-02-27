@@ -518,19 +518,19 @@ func LoadConfigWithOptions(path string, loadIdentity bool) (*Config, error) {
 						return nil, fmt.Errorf("error loading channel options for [ctrl/options] (%v)", err)
 					}
 				}
+			}
 
-				if value, found := submap["heartbeats"]; found {
-					if submap, ok := value.(map[interface{}]interface{}); ok {
-						options, err := channel.LoadHeartbeatOptions(submap)
-						if err != nil {
-							return nil, err
-						}
-						heartbeats, err := NewHeartbeatOptions(options)
-						if err != nil {
-							return nil, err
-						}
-						cfg.Ctrl.Heartbeats = *heartbeats
+			if value, found := submap["heartbeats"]; found {
+				if submap, ok := value.(map[interface{}]interface{}); ok {
+					options, err := channel.LoadHeartbeatOptions(submap)
+					if err != nil {
+						return nil, err
 					}
+					heartbeats, err := NewHeartbeatOptions(options)
+					if err != nil {
+						return nil, err
+					}
+					cfg.Ctrl.Heartbeats = *heartbeats
 				}
 			}
 			if value, found := submap["defaultRequestTimeout"]; found {
@@ -863,12 +863,12 @@ func LoadConfigWithOptions(path string, loadIdentity bool) (*Config, error) {
 		cfg.ConnectEvents.BatchInterval = MaxConnectEventsBatchInterval
 	}
 
-	if cfg.ConnectEvents.FullSyncInterval < MinConnectEventsBatchInterval {
+	if cfg.ConnectEvents.FullSyncInterval < MinConnectEventsFullSyncInterval {
 		pfxlog.Logger().Warnf("connectEvents.fullSyncInterval less than allowed minimum of %s", MinConnectEventsFullSyncInterval.String())
 		cfg.ConnectEvents.FullSyncInterval = MinConnectEventsFullSyncInterval
 	}
 
-	if cfg.ConnectEvents.FullSyncInterval > MaxConnectEventsBatchInterval {
+	if cfg.ConnectEvents.FullSyncInterval > MaxConnectEventsFullSyncInterval {
 		pfxlog.Logger().Warnf("connectEvents.fullSyncInterval greater than allowed maximum of %s", MaxConnectEventsFullSyncInterval.String())
 		cfg.ConnectEvents.FullSyncInterval = MaxConnectEventsFullSyncInterval
 	}
@@ -959,7 +959,7 @@ func LoadConfigWithOptions(path string, loadIdentity bool) (*Config, error) {
 					if err != nil {
 						return nil, errors.New("invalid value: interfaceDiscovery.minReportInterval value should be a valid duration")
 					} else {
-						cfg.IfaceDiscovery.CheckInterval = interval
+						cfg.IfaceDiscovery.MinReportInterval = interval
 					}
 				} else {
 					return nil, errors.New("invalid value: interfaceDiscovery.minReportInterval value should be a string representing a duration")
