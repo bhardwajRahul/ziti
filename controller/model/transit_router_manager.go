@@ -307,6 +307,7 @@ func (self *TransitRouterManager) TransitRouterToProtobuf(entity *TransitRouter)
 		UnverifiedCertPem:     entity.UnverifiedCertPem,
 		Cost:                  uint32(entity.Cost),
 		NoTraversal:           entity.NoTraversal,
+		Disabled:              entity.Disabled,
 	}
 
 	return msg, nil
@@ -333,6 +334,7 @@ func (self *TransitRouterManager) ProtobufToTransitRouter(msg *edge_cmd_pb.Trans
 		UnverifiedCertPem:     msg.UnverifiedCertPem,
 		Cost:                  uint16(msg.Cost),
 		NoTraversal:           msg.NoTraversal,
+		Disabled:              msg.Disabled,
 	}, nil
 }
 
