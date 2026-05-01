@@ -43,7 +43,8 @@ func NewControllerRouter() *ControllerRouter {
 
 func (r *ControllerRouter) Register(ae *env.AppEnv) {
 	ae.ManagementApi.ControllersListControllersHandler = controllersMan.ListControllersHandlerFunc(func(params controllersMan.ListControllersParams, _ interface{}) middleware.Responder {
-		return ae.IsAllowed(r.ListManagement, params.HTTPRequest, "", "", permissions.IsAuthenticated())
+		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, EntityNameController, permissions.Read)
+		return ae.IsAllowed(r.ListManagement, params.HTTPRequest, "", "", permissions.DefaultManagementAccess())
 	})
 
 	ae.ClientApi.ControllersListControllersHandler = controllersClient.ListControllersHandlerFunc(func(params controllersClient.ListControllersParams, _ interface{}) middleware.Responder {
