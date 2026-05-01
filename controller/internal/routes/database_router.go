@@ -70,7 +70,7 @@ func (r *DatabaseRouter) Register(ae *env.AppEnv) {
 	ae.FabricApi.DatabaseCreateDatabaseSnapshotWithPathHandler = fabricDatabase.CreateDatabaseSnapshotWithPathHandlerFunc(func(params fabricDatabase.CreateDatabaseSnapshotWithPathParams, _ any) middleware.Responder {
 		return ae.IsAllowed(func(ae *env.AppEnv, rc *response.RequestContext) {
 			r.CreateSnapshotWithPath(ae, rc, params.Snapshot)
-		}, params.HTTPRequest, "", "")
+		}, params.HTTPRequest, "", "", permissions.IsAdmin())
 	})
 
 	ae.FabricApi.DatabaseCheckDataIntegrityHandler = fabricDatabase.CheckDataIntegrityHandlerFunc(func(params fabricDatabase.CheckDataIntegrityParams, _ interface{}) middleware.Responder {
