@@ -43,17 +43,17 @@ func NewCircuitRouter() *CircuitRouter {
 func (r *CircuitRouter) Register(ae *env.AppEnv) {
 	ae.FabricApi.CircuitDetailCircuitHandler = circuit.DetailCircuitHandlerFunc(func(params circuit.DetailCircuitParams, _ any) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Read)
-		return ae.IsAllowed(r.Detail, params.HTTPRequest, params.ID, "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(r.Detail, params.HTTPRequest, params.ID, "", permissions.DefaultManagementAccess())
 	})
 
 	ae.FabricApi.CircuitListCircuitsHandler = circuit.ListCircuitsHandlerFunc(func(params circuit.ListCircuitsParams, _ any) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Read)
-		return ae.IsAllowed(r.ListCircuits, params.HTTPRequest, "", "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(r.ListCircuits, params.HTTPRequest, "", "", permissions.DefaultManagementAccess())
 	})
 
 	ae.FabricApi.CircuitDeleteCircuitHandler = circuit.DeleteCircuitHandlerFunc(func(params circuit.DeleteCircuitParams, _ any) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Delete)
-		return ae.IsAllowed(r.Delete, params.HTTPRequest, params.ID, "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(r.Delete, params.HTTPRequest, params.ID, "", permissions.DefaultManagementAccess())
 	})
 }
 

@@ -43,17 +43,17 @@ func NewApiSessionRouter() *ApiSessionHandler {
 func (ir *ApiSessionHandler) Register(ae *env.AppEnv) {
 	ae.ManagementApi.APISessionDeleteAPISessionsHandler = api_session.DeleteAPISessionsHandlerFunc(func(params api_session.DeleteAPISessionsParams, _ interface{}) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Delete)
-		return ae.IsAllowed(ir.Delete, params.HTTPRequest, params.ID, "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(ir.Delete, params.HTTPRequest, params.ID, "", permissions.DefaultManagementAccess())
 	})
 
 	ae.ManagementApi.APISessionDetailAPISessionsHandler = api_session.DetailAPISessionsHandlerFunc(func(params api_session.DetailAPISessionsParams, _ interface{}) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Read)
-		return ae.IsAllowed(ir.Detail, params.HTTPRequest, params.ID, "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(ir.Detail, params.HTTPRequest, params.ID, "", permissions.DefaultManagementAccess())
 	})
 
 	ae.ManagementApi.APISessionListAPISessionsHandler = api_session.ListAPISessionsHandlerFunc(func(params api_session.ListAPISessionsParams, _ interface{}) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Read)
-		return ae.IsAllowed(ir.List, params.HTTPRequest, "", "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(ir.List, params.HTTPRequest, "", "", permissions.DefaultManagementAccess())
 	})
 }
 

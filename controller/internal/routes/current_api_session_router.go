@@ -139,6 +139,11 @@ func (router *CurrentSessionRouter) ListCertificates(ae *env.AppEnv, rc *respons
 		return
 	}
 
+	if apiSession == nil {
+		rc.RespondWithError(errors.New("api session is nil, expected a value"))
+		return
+	}
+
 	ListWithEnvelopeFactory(rc, defaultToListEnvelope, func(rc *response.RequestContext, queryOptions *PublicQueryOptions) (*QueryResult, error) {
 		store := ae.GetStores().ApiSessionCertificate
 		query, err := queryOptions.getFullQuery(store)
