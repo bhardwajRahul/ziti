@@ -732,7 +732,10 @@ func (o *QuickstartOpts) scopedName(name string) string {
 }
 
 func (o *QuickstartOpts) instHome() string {
-	return path.Join(o.Home, o.InstanceID)
+	if o.joinCommand {
+		return path.Join(o.Home, o.InstanceID)
+	}
+	return o.Home
 }
 
 func (o *QuickstartOpts) configureOverlay() error {
