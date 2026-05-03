@@ -217,7 +217,7 @@ func Test_CLI_Test_Suite(t *testing.T) {
 	s.controllerUnderTest.NetworkDialingIdFile = s.externalZiti.NetworkDialingIdFile
 	s.controllerUnderTest.NetworkBindingIdFile = s.externalZiti.NetworkBindingIdFile
 
-	s.controllerUnderTest.ConfigFile = gopath.Join(s.controllerUnderTest.Home, s.controllerUnderTest.InstanceID, "ctrl.yaml")
+	s.controllerUnderTest.ConfigFile = gopath.Join(s.controllerUnderTest.Home, "ctrl.yaml")
 	newServerCertPath := gopath.Join(s.controllerUnderTest.Home, "pki/intermediate-ca-"+s.controllerUnderTest.TrustDomain+"/certs/mgmt.ziti.chain.pem")
 	if re := s.controllerUnderTest.ReplaceConfig(newServerCertPath); re != nil {
 		t.Fatalf("failed to replace config: %v", re)
