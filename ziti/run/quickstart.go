@@ -117,7 +117,7 @@ func NewQuickStartCmd(out io.Writer, errOut io.Writer, context context.Context) 
 				options.TrustDomain = "quickstart"
 			}
 			if options.InstanceID == "" {
-				options.InstanceID = "quickstart"
+				options.InstanceID = "instance-1"
 			}
 			return options.run(context)
 		},
@@ -732,10 +732,7 @@ func (o *QuickstartOpts) scopedName(name string) string {
 }
 
 func (o *QuickstartOpts) instHome() string {
-	if o.joinCommand {
-		return path.Join(o.Home, o.InstanceID)
-	}
-	return o.Home
+	return path.Join(o.Home, o.InstanceID)
 }
 
 func (o *QuickstartOpts) configureOverlay() error {
