@@ -117,7 +117,7 @@ func NewQuickStartCmd(out io.Writer, errOut io.Writer, context context.Context) 
 				options.TrustDomain = "quickstart"
 			}
 			if options.InstanceID == "" {
-				options.InstanceID = "quickstart"
+				options.InstanceID = "instance-1"
 			}
 			return options.run(context)
 		},

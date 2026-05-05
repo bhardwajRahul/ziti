@@ -370,8 +370,14 @@ func (c *Controller) initWeb() {
 		logrus.WithError(err).Fatalf("failed to create metrics api factory")
 	}
 
-	if err = c.xweb.GetRegistry().Add(webapis.NewZitiAdminConsoleFactory()); err != nil {
+	if err = c.xweb.GetRegistry().Add(webapis.NewSpaFactory()); err != nil {
 		logrus.WithError(err).Fatalf("failed to create single page application factory")
+	}
+
+	// Back-compat: preserve the legacy `binding: zac` so existing controller configs keep working.
+	// New configs should use `binding: spa` with an explicit `path`.
+	if err = c.xweb.GetRegistry().Add(webapis.NewZitiAdminConsoleFactory()); err != nil {
+		logrus.WithError(err).Fatalf("failed to create legacy ZAC factory")
 	}
 
 	if c.IsEdgeEnabled() {

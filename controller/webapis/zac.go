@@ -17,70 +17,56 @@
 package webapis
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/openziti/xweb/v3"
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	Binding = "zac"
-)
+// LegacyZacBinding is the historical binding name for the Ziti Admin Console SPA. It is kept
+// as a back-compat shim so existing controller configs using `binding: zac` continue to load
+// without modification. New configs should prefer `binding: spa` with an explicit `path`.
+const LegacyZacBinding = "zac"
 
 type ZitiAdminConsoleFactory struct {
+	delegate *SpaFactory
 }
 
 var _ xweb.ApiHandlerFactory = &ZitiAdminConsoleFactory{}
 
 func NewZitiAdminConsoleFactory() *ZitiAdminConsoleFactory {
-	return &ZitiAdminConsoleFactory{}
+	return &ZitiAdminConsoleFactory{delegate: NewSpaFactory()}
 }
 
-func (factory *ZitiAdminConsoleFactory) Validate(*xweb.InstanceConfig) error {
-	return nil
+func (factory *ZitiAdminConsoleFactory) Validate(c *xweb.InstanceConfig) error {
+	return factory.delegate.Validate(c)
 }
 
 func (factory *ZitiAdminConsoleFactory) Binding() string {
-	return Binding
+	return LegacyZacBinding
 }
 
-func (factory *ZitiAdminConsoleFactory) New(_ *xweb.ServerConfig, options map[interface{}]interface{}) (xweb.ApiHandler, error) {
-	locVal := options["location"]
-	if locVal == nil || locVal == "" {
-		return nil, fmt.Errorf("location must be supplied in the %s options", Binding)
+func (factory *ZitiAdminConsoleFactory) New(serverConfig *xweb.ServerConfig, options map[interface{}]interface{}) (xweb.ApiHandler, error) {
+	log.Warnf("the %q binding is deprecated; switch to `binding: spa` with `path: zac` in your controller config", LegacyZacBinding)
+
+	// Inject the implicit path = "zac" so the generic SPA factory produces the same /zac context root
+	// the original ZAC handler used. We copy to avoid mutating the caller's map.
+	merged := make(map[interface{}]interface{}, len(options)+1)
+	for k, v := range options {
+		merged[k] = v
+	}
+	if _, hasPath := merged["path"]; !hasPath {
+		merged["path"] = LegacyZacBinding
 	}
 
-	loc, ok := locVal.(string)
-
-	if !ok {
-		return nil, fmt.Errorf("location must be a string for the %s options", Binding)
+	handler, err := factory.delegate.New(serverConfig, merged)
+	if err != nil {
+		return nil, err
 	}
 
-	indexFileVal := options["indexFile"]
-	indexFile := "index.html"
-
-	if indexFileVal != nil {
-		newFileVal, ok := indexFileVal.(string)
-
-		if !ok {
-			return nil, fmt.Errorf("indexFile must be a string for the %s options", Binding)
-		}
-
-		newFileVal = strings.TrimSpace(newFileVal)
-
-		if newFileVal != "" {
-			indexFile = newFileVal
-		}
+	// Preserve the historical behavior where the ZAC handler also matched absolute "/assets/*"
+	// URLs, since the original ZAC bundle was not built with a base href.
+	if generic, ok := handler.(*GenericHttpHandler); ok {
+		generic.ExtraPrefixes = append(generic.ExtraPrefixes, "/assets")
 	}
 
-	contextRoot := "/" + Binding
-	spa := &GenericHttpHandler{
-		HttpHandler: SpaHandler(loc, contextRoot, indexFile),
-		BindingKey:  Binding,
-		ContextRoot: contextRoot,
-	}
-
-	log.Infof("initializing ZAC SPA Handler from %s", locVal)
-	return spa, nil
+	return handler, nil
 }

@@ -85,6 +85,37 @@ Since we already have a breaking change, we're removing some other backwards com
     * The integer form was an undocumented side effect of the internal storage format and never worked with the documented filter names
     * Github tracking issue: https://github.com/openziti/ziti/issues/3818
 
+### Generic SPA Hosting
+
+The controller's web layer now supports hosting arbitrary single-page applications via a generic
+`binding: spa` API. Each `binding: spa` entry takes a `path` (which becomes the URL context root) and
+a `location` (the directory to serve). Multiple SPAs can be registered side by side at different
+context roots. Example:
+
+```yaml
+- binding: spa
+  options:
+    path: zac
+    location: /opt/openziti/share/console
+    indexFile: index.html
+- binding: spa
+  options:
+    path: my-app
+    location: /opt/my-app
+    indexFile: index.html
+```
+
+The previous `binding: zac` is preserved as a back-compat shim and continues to work without
+modification, but emits a deprecation warning at startup. New deployments should prefer
+`binding: spa` with an explicit `path`. The legacy shim retains a global `/assets/*` URL capture so
+ZAC bundles built with absolute asset paths keep working; new SPAs bound via `binding: spa` are
+expected to use relative URLs (or be built with `<base href>` matching their `path`).
+
+The SPA file-serving handler also gained defense-in-depth path-traversal checks (boundary-aware
+prefix matching plus a `filepath.Rel`-based containment check on every served file) so that a
+crafted URL cannot escape the configured `location` even if the standard library's own protections
+ever change.
+
 ### Legacy Session Deprecation
 
 OIDC sessions are now preferred. They are the default, or will become the default for SDKs and tunnelers. They are also required
