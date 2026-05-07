@@ -379,7 +379,7 @@ func (o *QuickstartOpts) run(ctx context.Context) error {
 	}
 
 	erConfigFile := path.Join(o.instHome(), routerName+".yaml")
-	err := o.configureRouter(routerName, erConfigFile, o.ControllerHostPort())
+	err := o.configureRouter(ctx, routerName, erConfigFile, o.ControllerHostPort())
 	if err != nil {
 		cancel()
 		return err
@@ -456,7 +456,7 @@ func (o *QuickstartOpts) printDetails() {
 	fmt.Printf("    instance pid           : %d\n", os.Getpid())
 }
 
-func (o *QuickstartOpts) configureRouter(routerName string, configFile string, ctrlUrl string) error {
+func (o *QuickstartOpts) configureRouter(ctx context.Context, routerName string, configFile string, ctrlUrl string) error {
 	if o.Routerless {
 		return nil
 	}
@@ -464,18 +464,10 @@ func (o *QuickstartOpts) configureRouter(routerName string, configFile string, c
 	erJwt := path.Join(o.Home, routerName+".jwt")
 
 	if !o.AlreadyInitialized {
-		loginCmd := edge.NewLoginCmd(o.out, o.errOut)
-		loginCmd.SetArgs([]string{
-			o.ControllerHostPort(),
-			fmt.Sprintf("--username=%s", o.Username),
-			fmt.Sprintf("--password=%s", o.Password),
-			"-y",
-		})
 		if o.joinCommand {
 			o.waitForLeader()
 		}
-		loginErr := loginCmd.Execute()
-		if loginErr != nil {
+		if loginErr := o.loginWithRetry(ctx, 60*time.Second); loginErr != nil {
 			return loginErr
 		}
 
@@ -526,15 +518,7 @@ func (o *QuickstartOpts) configureRouter(routerName string, configFile string, c
 	// Enroll router if JWT file still exists (consumed on successful enrollment)
 	if _, err := os.Stat(erJwt); err == nil {
 		if o.AlreadyInitialized {
-			loginCmd := edge.NewLoginCmd(o.out, o.errOut)
-			loginCmd.SetArgs([]string{
-				o.ControllerHostPort(),
-				fmt.Sprintf("--username=%s", o.Username),
-				fmt.Sprintf("--password=%s", o.Password),
-				"-y",
-			})
-			loginErr := loginCmd.Execute()
-			if loginErr != nil {
+			if loginErr := o.loginWithRetry(ctx, 60*time.Second); loginErr != nil {
 				return loginErr
 			}
 		}
@@ -771,6 +755,42 @@ func (o *QuickstartOpts) configureOverlay() error {
 
 type raftListMembersAction struct {
 	api.Options
+}
+
+// loginWithRetry runs `ziti edge login` and retries on failure until it succeeds
+// or the timeout elapses. This handles the post-join window where the AddPeer
+// raft command has committed cluster membership but the admin authenticator row
+// has not yet replicated into the local FSM, which causes a single-shot login to
+// fail with 401. Mirrors the bounded retry the bash quickstart performs.
+func (o *QuickstartOpts) loginWithRetry(ctx context.Context, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	attempt := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		loginCmd := edge.NewLoginCmd(o.out, o.errOut)
+		loginCmd.SetArgs([]string{
+			o.ControllerHostPort(),
+			fmt.Sprintf("--username=%s", o.Username),
+			fmt.Sprintf("--password=%s", o.Password),
+			"-y",
+		})
+		attempt++
+		err := loginCmd.Execute()
+		if err == nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("login failed after %s (%d attempts): %w", timeout, attempt, err)
+		}
+		fmt.Printf("login attempt %d failed: %v -- retrying...\n", attempt, err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(1 * time.Second):
+		}
+	}
 }
 
 func (o *QuickstartOpts) waitForLeader() bool {
