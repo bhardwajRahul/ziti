@@ -659,6 +659,8 @@ func (s *HybridStorage) createAccessToken(ctx context.Context, request op.TokenR
 	}
 
 	var eventType = "unhandled"
+	var csrPem string
+	var csrApiSessionId string
 
 	switch req := request.(type) {
 	case *AuthRequest:
@@ -669,7 +671,10 @@ func (s *HybridStorage) createAccessToken(ctx context.Context, request op.TokenR
 		claims.AuthenticationMethodsReferences = req.GetAMR()
 		// cert backed auth should bind tokens for cert pop, avoid for auth requests that do not establish cert pop prior or during the request
 		if req.HasAmr(AuthMethodCert) {
-			claims.CustomClaims.CertFingerprints = req.GetCertFingerprints()
+			if fp := req.GetCertFingerprint(); fp != "" {
+				claims.CustomClaims.CertFingerprints = []string{fp}
+				claims.CustomClaims.AuthCertFingerprint = fp
+			}
 		}
 		claims.CustomClaims.EnvInfo = req.EnvInfo
 		claims.CustomClaims.SdkInfo = req.SdkInfo
@@ -683,12 +688,22 @@ func (s *HybridStorage) createAccessToken(ctx context.Context, request op.TokenR
 		claims.AuthTime = oidc.Time(req.AuthTime.Unix())
 		claims.AccessTokenClaims.AuthenticationMethodsReferences = req.GetAMR()
 		claims.ClientID = req.ClientID
+
+		if req.CsrPem != "" {
+			csrPem = req.CsrPem
+			csrApiSessionId = req.ApiSessionId
+		}
 	case *RefreshTokenRequest:
 		eventType = event.ApiSessionEventTypeRefreshed
 		claims.CustomClaims = req.CustomClaims
 		claims.AuthTime = req.AuthTime
 		claims.AccessTokenClaims.AuthenticationMethodsReferences = req.GetAMR()
 		claims.ClientID = req.ClientID
+
+		if ts, tsErr := TokenStateFromContext(ctx); tsErr == nil && ts.CsrPem != "" {
+			csrPem = ts.CsrPem
+			csrApiSessionId = req.CustomClaims.ApiSessionId
+		}
 	case op.TokenExchangeRequest:
 		eventType = event.ApiSessionEventTypeExchanged
 		mapClaims := req.GetExchangeSubjectTokenClaims()
@@ -723,6 +738,11 @@ func (s *HybridStorage) createAccessToken(ctx context.Context, request op.TokenR
 		claims.CustomClaims = subjectClaims.CustomClaims
 		claims.AccessTokenClaims.AuthenticationMethodsReferences = req.GetAMR()
 		claims.ClientID = req.GetClientID()
+
+		if ts, tsErr := TokenStateFromContext(ctx); tsErr == nil && ts.CsrPem != "" {
+			csrPem = ts.CsrPem
+			csrApiSessionId = subjectClaims.CustomClaims.ApiSessionId
+		}
 	}
 
 	claims.AccessTokenClaims.Scopes = request.GetScopes()
@@ -742,20 +762,43 @@ func (s *HybridStorage) createAccessToken(ctx context.Context, request op.TokenR
 	claims.CustomClaims.IsAdmin = identity.IsAdmin
 	claims.CustomClaims.ExternalId = stringz.OrEmpty(identity.ExternalId)
 
+	certGenerated := false
+	if csrPem != "" {
+		csrChangeCtx := NewChangeCtx()
+		apiSession := &model.ApiSession{BaseEntity: models.BaseEntity{Id: csrApiSessionId}}
+		apiSessionCert, csrErr := s.env.GetManagers().ApiSessionCertificate.CreateFromCSR(
+			identity, apiSession, true, 365*24*time.Hour, []byte(csrPem), csrChangeCtx,
+		)
+		if csrErr != nil {
+			return "", nil, oidc.ErrInvalidRequest().WithDescription("invalid CSR: %s", csrErr.Error())
+		}
+
+		if claims.CustomClaims.AuthCertFingerprint != "" {
+			claims.CustomClaims.CertFingerprints = []string{claims.CustomClaims.AuthCertFingerprint, apiSessionCert.Fingerprint}
+		} else {
+			claims.CustomClaims.CertFingerprints = []string{apiSessionCert.Fingerprint}
+		}
+		if ts, tsErr := TokenStateFromContext(ctx); tsErr == nil {
+			ts.SessionCertPem = apiSessionCert.PEM
+		}
+		certGenerated = true
+	}
+
 	ipAddr := ""
 	if httpRequest, _ := HttpRequestFromContext(ctx); httpRequest != nil {
 		ipAddr = httpRequest.RemoteAddr
 	}
 
 	evt := &event.ApiSessionEvent{
-		Namespace:  event.ApiSessionEventNS,
-		EventType:  eventType,
-		EventSrcId: s.env.GetId(),
-		Id:         claims.ApiSessionId,
-		Type:       event.ApiSessionTypeJwt,
-		Timestamp:  time.Now(),
-		IdentityId: identity.Id,
-		IpAddress:  ipAddr,
+		Namespace:     event.ApiSessionEventNS,
+		EventType:     eventType,
+		EventSrcId:    s.env.GetId(),
+		Id:            claims.ApiSessionId,
+		Type:          event.ApiSessionTypeJwt,
+		Timestamp:     time.Now(),
+		IdentityId:    identity.Id,
+		IpAddress:     ipAddr,
+		CertGenerated: certGenerated,
 	}
 	s.env.GetEventDispatcher().AcceptApiSessionEvent(evt)
 
@@ -788,7 +831,7 @@ func (s *HybridStorage) CreateAccessAndRefreshTokens(ctx context.Context, reques
 		return accessTokenId, refreshToken, accessClaims.Expiration.AsTime(), nil
 	}
 
-	refreshToken, refreshClaims, err := s.renewRefreshToken(currentRefreshToken)
+	refreshToken, refreshClaims, err := s.renewRefreshToken(currentRefreshToken, accessClaims)
 	tokenState.RefreshClaims = refreshClaims
 
 	if err != nil {
@@ -1094,7 +1137,7 @@ func (s *HybridStorage) saveRevocation(revocation *model.Revocation) error {
 	return s.env.GetManagers().Revocation.Create(revocation, change.New())
 }
 
-func (s *HybridStorage) renewRefreshToken(currentRefreshToken string) (string, *common.RefreshClaims, error) {
+func (s *HybridStorage) renewRefreshToken(currentRefreshToken string, accessClaims *common.AccessClaims) (string, *common.RefreshClaims, error) {
 	_, refreshClaims, err := s.parseRefreshToken(currentRefreshToken)
 
 	if err != nil {
@@ -1108,10 +1151,14 @@ func (s *HybridStorage) renewRefreshToken(currentRefreshToken string) (string, *
 		s.batcher.Add(NewRevocation(refreshClaims.JWTID, expiresAt))
 	}
 
+	// Use the access claims' CustomClaims so that any updates from CSR signing
+	// (CertFingerprints, AuthCertFingerprint) are propagated to the new refresh token.
 	newRefreshClaims := &common.RefreshClaims{
 		IDTokenClaims: refreshClaims.IDTokenClaims,
-		CustomClaims:  refreshClaims.CustomClaims,
+		CustomClaims:  accessClaims.CustomClaims,
 	}
+	newRefreshClaims.CustomClaims.Type = common.TokenTypeRefresh
+
 	now := time.Now()
 	newRefreshClaims.JWTID = uuid.NewString()
 	newRefreshClaims.IssuedAt = oidc.Time(now.Unix())

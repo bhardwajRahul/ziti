@@ -150,6 +150,7 @@ func (ir *VersionRouter) buildVersions(ae *env.AppEnv) *rest_model.Version {
 
 	if oidcEnabled {
 		v.Capabilities = append(v.Capabilities, string(rest_model.CapabilitiesOIDCAUTH))
+		v.Capabilities = append(v.Capabilities, string(rest_model.CapabilitiesOIDCAUTHWITHCSR))
 	}
 
 	if ae.HostController.IsRaftEnabled() {
@@ -167,6 +168,7 @@ func (ir *VersionRouter) ListCapabilities(_ *env.AppEnv, rc *response.RequestCon
 	capabilities := []rest_model.Capabilities{
 		rest_model.CapabilitiesOIDCAUTH,
 		rest_model.CapabilitiesHACONTROLLER,
+		rest_model.CapabilitiesOIDCAUTHWITHCSR,
 	}
 
 	rc.RespondWithOk(capabilities, &rest_model.Meta{})
