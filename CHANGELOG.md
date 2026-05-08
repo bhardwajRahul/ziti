@@ -1365,6 +1365,11 @@ be removed.
 
 * github.com/openziti/go-term-markdown: v1.0.1 (new)
 * github.com/openziti/ziti/v2: [v1.6.8 -> v2.0.0](https://github.com/openziti/ziti/compare/v1.6.8...v2.0.0)
+    * [Issue #3855](https://github.com/openziti/ziti/issues/3855) - Filter current api session certs list by current api session
+    * [Issue #3838](https://github.com/openziti/ziti/issues/3838) - List controllers on management API has incorrect permissions check
+    * [Issue #3837](https://github.com/openziti/ziti/issues/3837) - Create db snapshot with path has incorrect permissions check
+    * [Issue #3846](https://github.com/openziti/ziti/issues/3846) - OIDC token binds client cert during non-cert auth, causes PoP failures
+    * [Issue #3809](https://github.com/openziti/ziti/issues/3809) - Support CSR submission during OIDC authentication for session-bound certificates
     * [Issue #3830](https://github.com/openziti/ziti/issues/3830) - statemanager is holding on to edge connections and they're never getting cleared
     * [Issue #3824](https://github.com/openziti/ziti/issues/3824) - Allow calling inspect using the IPC agent on the controller, router and go tunnel
     * [Issue #2049](https://github.com/openziti/ziti/issues/2049) - The ziti agent command should have a controller connection status

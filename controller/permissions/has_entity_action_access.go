@@ -16,8 +16,6 @@
 
 package permissions
 
-import "github.com/michaelquigley/pfxlog"
-
 type RequireEntityActionAccess struct{}
 
 var requiredEntityActionAccess = RequireEntityActionAccess{}
@@ -28,6 +26,5 @@ func HasEntityActionAccess() RequireEntityActionAccess {
 
 func (ia RequireEntityActionAccess) IsAllowed(ctx Context) bool {
 	entityAction := ctx.GetEntityAction()
-	pfxlog.Logger().Infof("checking permissions for entity action %s -> %v", entityAction, ctx.HasPermission(entityAction))
 	return entityAction != "" && ctx.HasPermission(entityAction)
 }

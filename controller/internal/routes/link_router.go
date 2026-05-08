@@ -45,22 +45,22 @@ func NewLinkRouter() *LinkRouter {
 func (r *LinkRouter) Register(ae *env.AppEnv) {
 	ae.FabricApi.LinkDetailLinkHandler = link.DetailLinkHandlerFunc(func(params link.DetailLinkParams, _ any) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Read)
-		return ae.IsAllowed(r.Detail, params.HTTPRequest, params.ID, "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(r.Detail, params.HTTPRequest, params.ID, "", permissions.DefaultManagementAccess())
 	})
 
 	ae.FabricApi.LinkListLinksHandler = link.ListLinksHandlerFunc(func(params link.ListLinksParams, _ any) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Read)
-		return ae.IsAllowed(r.ListLinks, params.HTTPRequest, "", "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(r.ListLinks, params.HTTPRequest, "", "", permissions.DefaultManagementAccess())
 	})
 
 	ae.FabricApi.LinkPatchLinkHandler = link.PatchLinkHandlerFunc(func(params link.PatchLinkParams, _ any) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Update)
-		return ae.IsAllowed(func(ae *env.AppEnv, rc *response.RequestContext) { r.Patch(ae, rc, params) }, params.HTTPRequest, params.ID, "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(func(ae *env.AppEnv, rc *response.RequestContext) { r.Patch(ae, rc, params) }, params.HTTPRequest, params.ID, "", permissions.DefaultManagementAccess())
 	})
 
 	ae.FabricApi.LinkDeleteLinkHandler = link.DeleteLinkHandlerFunc(func(params link.DeleteLinkParams, _ any) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Delete)
-		return ae.IsAllowed(r.Delete, params.HTTPRequest, params.ID, "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(r.Delete, params.HTTPRequest, params.ID, "", permissions.DefaultManagementAccess())
 	})
 }
 

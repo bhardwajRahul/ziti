@@ -54,22 +54,22 @@ func (r *SessionRouter) Register(ae *env.AppEnv) {
 	//Management
 	ae.ManagementApi.SessionDeleteSessionHandler = managementSession.DeleteSessionHandlerFunc(func(params managementSession.DeleteSessionParams, _ interface{}) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Delete)
-		return ae.IsAllowed(r.Delete, params.HTTPRequest, params.ID, "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(r.Delete, params.HTTPRequest, params.ID, "", permissions.DefaultManagementAccess())
 	})
 
 	ae.ManagementApi.SessionDetailSessionHandler = managementSession.DetailSessionHandlerFunc(func(params managementSession.DetailSessionParams, _ interface{}) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Read)
-		return ae.IsAllowed(r.Detail, params.HTTPRequest, params.ID, "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(r.Detail, params.HTTPRequest, params.ID, "", permissions.DefaultManagementAccess())
 	})
 
 	ae.ManagementApi.SessionListSessionsHandler = managementSession.ListSessionsHandlerFunc(func(params managementSession.ListSessionsParams, _ interface{}) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Read)
-		return ae.IsAllowed(r.List, params.HTTPRequest, "", "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(r.List, params.HTTPRequest, "", "", permissions.DefaultManagementAccess())
 	})
 
 	ae.ManagementApi.SessionDetailSessionRoutePathHandler = managementSession.DetailSessionRoutePathHandlerFunc(func(params managementSession.DetailSessionRoutePathParams, _ interface{}) middleware.Responder {
 		ae.InitPermissionsContext(params.HTTPRequest, permissions.Management, permissions.Ops, permissions.Read)
-		return ae.IsAllowed(func(ae *env.AppEnv, rc *response.RequestContext) { r.DetailRoutePath(ae, rc, params) }, params.HTTPRequest, "", "", permissions.DefaultOpsAccess())
+		return ae.IsAllowed(func(ae *env.AppEnv, rc *response.RequestContext) { r.DetailRoutePath(ae, rc, params) }, params.HTTPRequest, "", "", permissions.DefaultManagementAccess())
 	})
 
 	//Client

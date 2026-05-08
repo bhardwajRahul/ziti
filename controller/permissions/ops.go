@@ -20,10 +20,6 @@ var opsNoReadOnlyAccess = NewRequireAllOf(
 	IsManagementApi(),
 	HasOneOf(IsAdmin(), HasEntityAccess(), HasEntityActionAccess()))
 
-func DefaultOpsAccess() Resolver {
-	return defaultManagementAccess
-}
-
 func OpsNoReadOnlyAccess() Resolver {
 	return opsNoReadOnlyAccess
 }

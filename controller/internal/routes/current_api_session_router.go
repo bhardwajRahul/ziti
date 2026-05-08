@@ -18,6 +18,7 @@ package routes
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/openziti/ziti/v2/controller/model"
 	"github.com/openziti/ziti/v2/controller/permissions"
 	"github.com/openziti/ziti/v2/controller/response"
+	"github.com/openziti/ziti/v2/controller/storage/ast"
 )
 
 func init() {
@@ -130,11 +132,30 @@ func (router *CurrentSessionRouter) Delete(ae *env.AppEnv, rc *response.RequestC
 }
 
 func (router *CurrentSessionRouter) ListCertificates(ae *env.AppEnv, rc *response.RequestContext) {
+	apiSession, err := rc.SecurityCtx.GetApiSession()
+
+	if err != nil {
+		rc.RespondWithError(err)
+		return
+	}
+
+	if apiSession == nil {
+		rc.RespondWithError(errors.New("api session is nil, expected a value"))
+		return
+	}
+
 	ListWithEnvelopeFactory(rc, defaultToListEnvelope, func(rc *response.RequestContext, queryOptions *PublicQueryOptions) (*QueryResult, error) {
-		query, err := queryOptions.getFullQuery(ae.GetStores().ApiSessionCertificate)
+		store := ae.GetStores().ApiSessionCertificate
+		query, err := queryOptions.getFullQuery(store)
 		if err != nil {
 			return nil, err
 		}
+
+		scopeQuery, err := ast.Parse(store, fmt.Sprintf(`apiSession = "%s"`, apiSession.Id))
+		if err != nil {
+			return nil, err
+		}
+		query.SetPredicate(ast.NewAndExprNode(query.GetPredicate(), scopeQuery.GetPredicate()))
 
 		result, err := ae.GetManagers().ApiSessionCertificate.BasePreparedList(query)
 		if err != nil {

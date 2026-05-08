@@ -80,6 +80,10 @@ var AllPermissions = map[string]struct{}{
 	"config-type.update": {},
 	"config-type.delete": {},
 
+	// controllers permissions (read-only listing of cluster members)
+	"controllers":      {},
+	"controllers.read": {},
+
 	// edge-router-policy permissions
 	"edge-router-policy":        {},
 	"edge-router-policy.read":   {},
