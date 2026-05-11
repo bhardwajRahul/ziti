@@ -107,6 +107,7 @@ func (self *BoltDbFsm) Init() error {
 		return err
 	}
 
+	self.startIndex = startIndex
 	self.index = startIndex
 	self.indexTracker.NotifyOfIndex(startIndex)
 
