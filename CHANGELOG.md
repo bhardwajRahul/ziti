@@ -1365,6 +1365,7 @@ be removed.
 
 * github.com/openziti/go-term-markdown: v1.0.1 (new)
 * github.com/openziti/ziti/v2: [v1.6.8 -> v2.0.0](https://github.com/openziti/ziti/compare/v1.6.8...v2.0.0)
+    * [Issue #3860](https://github.com/openziti/ziti/issues/3860) - Router data model index resets to 0 on controller restart
     * [Issue #3855](https://github.com/openziti/ziti/issues/3855) - Filter current api session certs list by current api session
     * [Issue #3838](https://github.com/openziti/ziti/issues/3838) - List controllers on management API has incorrect permissions check
     * [Issue #3837](https://github.com/openziti/ziti/issues/3837) - Create db snapshot with path has incorrect permissions check
