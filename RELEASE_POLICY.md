@@ -42,14 +42,13 @@ A correction to unintended behavior that does not introduce new functionality. A
 A bug fix that meets one or more of the following criteria: it affects all or a significant majority of deployments, it causes measurable operational impact (elevated error rates, unexpected restarts, degraded throughput, failed enrollments), or it blocks a required security or compliance workflow. A critical bug fix is still bound by the same constraints as a standard bug fix — it must not alter any existing API, protocol behavior, or configuration contract.
 
 **Security Fix**
-A patch that addresses a known vulnerability — CVE-assigned or internally identified — that could expose users to unauthorized access, data exposure, privilege escalation, denial of service, or credential compromise. Security fixes are applied to all active LTS versions regardless of phase and are prioritized above all other work.
+A patch that addresses a known vulnerability — CVE-assigned or internally identified — that could expose users to unauthorized access, data exposure, privilege escalation, denial of service, or credential compromise. Security fixes are applied to all active LTS versions regardless of phase and are prioritized above all other work. See [SECURITY.md](./SECURITY.md) for vulnerability reporting and disclosure handling.
 
 **Critical Production Defect**
 A defect that causes one or more of the following in a production environment: loss of network connectivity for authenticated identities, inability to authenticate or enroll, data corruption or loss, unrecoverable process crashes, or a regression directly introduced by a prior patch release. **Scope**: the defect must affect production deployments at scale, not isolated edge cases or single-tenant configurations. Performance degradation, UI issues, edge-case behavior, and feature limitations do not qualify.
 
 **No Support**
 For OpenZiti (OSS): no new patches, security fixes, bug fixes, or active issue triage. GitHub Issues may remain open but will not be actively worked. Community discussion is welcome but carries no response guarantee.
-For NetFoundry (Commercial): no SLA coverage, no production fixes, no troubleshooting assistance, and no contractual commitments of any kind. Extended LTS is available under a separate contract for customers requiring continued coverage beyond the standard window.
 
 ---
 
@@ -64,7 +63,15 @@ OpenZiti is an open-source project with community consumers. LTS here establishe
 | Latest Development | Rolling | Features + Security + Bug Fixes | Continuous releases; no LTS guarantees |
 | Active LTS (N) | 12 months | Security + Critical Bug Fixes | Dependency updates restricted to security fixes, required vulnerability SLA remediation, build/toolchain compatibility, and explicitly approved low-risk updates |
 | Maintenance LTS (N-1) | Months 13–24 | Security + Critical Production Defects Only | Dependency updates restricted to security fixes and required vulnerability SLA remediation |
-| End of Life | Month 25+ | No Support | Automated deprecation notices; archive only. See [No Support](#definitions) definition above. |
+| End of Life | Month 25+ | No Support | Deprecation announced in release notes; archive only. See [No Support](#definitions) definition above. |
+
+### Patch Release Cadence
+
+- **Active LTS (N)**: monthly patch releases, rolling up accumulated bug and security fixes.
+- **Maintenance LTS (N-1)**: patch releases as needed, driven by critical bugs and security fixes. No fixed cadence.
+- **Latest Development**: continuous releases on the normal feature cadence; not bound by the LTS patch schedule.
+
+Security fixes may ship outside the regular cadence when warranted by severity.
 
 ### Naming
 
@@ -124,7 +131,7 @@ All SDKs must be tested against all active LTS versions and the current latest r
 - iOS
 - Linux
 
-All Clients must be tested against all active LTS versions and the current latest release before a new SDK version is published. This ensures that SDK consumers are not broken regardless of which supported Controller/Router version they are running against.
+All Clients must be tested against all active LTS versions and the current latest release before a new client version is published. This ensures that client users are not broken regardless of which supported Controller/Router version they are running against.
 
 ### Testing
 
@@ -132,11 +139,9 @@ All Clients must be tested against all active LTS versions and the current lates
 
 Every new release is tested for controller/router interoperability against the current Active LTS (N) and Maintenance LTS (N-1) before shipping. A minimum of four combinations are validated: the new version acting as controller against each LTS version's routers, and the new version acting as router against each LTS version's controllers.
 
-Two options are under consideration for the compatibility guarantee:
+Interoperability is guaranteed between any new release and the current Active LTS (N). Interoperability with the Maintenance LTS (N-1) is best effort. This applies to both LTS releases and dev releases that pass the interop test gate before shipping.
 
-**New-release guarantee**: Interoperability is guaranteed between any new release and the current Active LTS (N) and Maintenance LTS (N-1). This extends the guarantee to cover dev releases that pass the interop test gate before shipping.
-
-Combinations spanning more than two LTS generations are not tested and carry no compatibility guarantee under either option.
+Combinations spanning more than two LTS generations are not tested and carry no compatibility guarantee.
 
 #### Release Testing Levels
 
