@@ -33,6 +33,37 @@ of the backwards incompatibility.
 
 If you need to support in the 1.6.12+ range, see the section "OIDC enabled by default".
 
+### Release Policy and LTS
+
+Alongside this release we're publishing a formal [Release Policy](./RELEASE_POLICY.md). The goal is to give
+operators a predictable upgrade cadence and a clear answer to "is my version still supported?"
+
+The short version:
+
+* **2.0 is the current LTS (N).** It will receive security fixes and critical bug fixes.
+* **1.6 is now the maintenance LTS (N-1).** It will receive security fixes and fixes for critical production
+  defects only.
+* 2.0 remains the current LTS until the next LTS is cut, approximately a year from now. At that point 2.0 will
+  move to maintenance and **1.6 will reach end of life and no longer be supported**.
+* Two active LTS versions at any time means you're always within a two-year support window.
+
+A few things worth calling out from the policy that operators planning upgrades should know:
+
+* Sequential upgrades (N-1 → N) are the only tested and guaranteed upgrade path. Skipping LTS generations
+  carries no compatibility guarantee, so 1.6 users should plan their move to 2.0 before 1.6 goes EOL.
+* The latest released versions of all supported SDKs and tunnelers (Go, C, Java, Swift, Python, Node.js,
+  .NET/C#, Desktop Edge, mobile clients) are guaranteed to work against any active LTS controller/router.
+  The SDK/tunneler versions current at the time an LTS was cut also remain compatible with subsequent patch
+  releases of that same LTS, so deployments that pin their SDK won't be broken by a controller/router patch
+  within the same LTS generation.
+* Releases between LTS cuts (the "Latest Development" track) continue to ship features and fixes, but carry
+  no LTS guarantees.
+* Feature backports to LTS are exceptional and require explicit maintainer approval. They are never applied
+  to the maintenance LTS.
+
+See [RELEASE_POLICY.md](./RELEASE_POLICY.md) for the full lifecycle, support scope per phase, testing
+guarantees, and version compatibility details.
+
 ### New Permissions Model (BETA)
 
 As one feature goes out of beta, another arrives into beta. This release introduces a new permissions system
